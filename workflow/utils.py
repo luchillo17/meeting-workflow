@@ -55,7 +55,7 @@ def parse_meeting_date(filename: str) -> str | None:
     return f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}"
 
 
-def write_json(path: Path, data: dict) -> None:
+def write_json(path: Path, data: dict | list) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

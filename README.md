@@ -6,7 +6,7 @@ Runs locally with faster-whisper + Ollama. ~$0 API cost. **Windows, Linux, and m
 
 ## Status
 
-**v1 in development** — Transcript stage is real; Visual Capture and Structured Extraction are still fixture-backed ([#4](https://github.com/luchillo17/meeting-workflow/issues/4), [#5](https://github.com/luchillo17/meeting-workflow/issues/5)).
+**v1 in development** — Transcript and Visual Capture are real; Structured Extraction is still fixture-backed ([#5](https://github.com/luchillo17/meeting-workflow/issues/5)).
 
 ## Quick start
 
@@ -31,6 +31,8 @@ Platform-specific prerequisites and GPU notes: **[docs/SETUP.md](docs/SETUP.md)*
 | `uv run meeting-workflow process`             | Workflow Run (uses `RECORDING_PATH` from `.env`) |
 | `uv run meeting-workflow process --file PATH` | Process a specific recording                     |
 | `uv run meeting-workflow process --force`     | Reprocess even if Extraction exists              |
+| `uv run meeting-workflow frames`              | Frame extraction only (uses `transcript.json`)   |
+| `uv run meeting-workflow frames --force`      | Re-extract frames without re-transcribing        |
 
 Legacy entrypoint: `uv run python run.py process`
 
