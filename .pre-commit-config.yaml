@@ -1,0 +1,27 @@
+# Git pre-commit hook — formats/lints staged files before each commit.
+# Install: uv run pre-commit install
+# Run on all files: uv run pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.13
+    hooks:
+      - id: ruff-format
+      - id: ruff-check
+        args: [--fix]
+
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        additional_dependencies:
+          - prettier@4.0.0-alpha.8
+          - prettier-plugin-powershell@2.1.6
+        files: \.(js|jsx|ts|tsx|md|ya?ml|json|ps1|psm1|psd1)$
+        exclude: ^uv\.lock$
+
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.10.0-2
+    hooks:
+      - id: shfmt
+        args: [-i, "2", -ci, -bn]

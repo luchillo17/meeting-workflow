@@ -50,9 +50,8 @@ def run_preflight(project_root: Path | None = None) -> list[Check]:
     root = project_root or Path.cwd()
     checks: list[Check] = []
 
-    if sys.version_info >= (3, 12):
-        checks.append(Check("python", "ok", f"{sys.version_info.major}.{sys.version_info.minor}"))
-    else:
+    # Runtime guard for `python -m workflow.cli` without uv (requires-python is 3.12+).
+    if sys.version_info < (3, 12):  # noqa: UP036
         checks.append(
             Check(
                 "python",
@@ -60,6 +59,8 @@ def run_preflight(project_root: Path | None = None) -> list[Check]:
                 f"{sys.version_info.major}.{sys.version_info.minor} (requires 3.12+)",
             )
         )
+    else:
+        checks.append(Check("python", "ok", f"{sys.version_info.major}.{sys.version_info.minor}"))
 
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg:
@@ -111,11 +112,15 @@ def run_preflight(project_root: Path | None = None) -> list[Check]:
 
             count = ctranslate2.get_cuda_device_count()
             if whisper_device == "cuda" and count == 0:
-                checks.append(Check("cuda device", "fail", "whisper.device=cuda but no GPU detected"))
+                checks.append(
+                    Check("cuda device", "fail", "whisper.device=cuda but no GPU detected")
+                )
             elif count > 0:
                 checks.append(Check("cuda device", "ok", f"{count} device(s)"))
             else:
-                checks.append(Check("cuda device", "warn", "no CUDA devices (CPU fallback possible)"))
+                checks.append(
+                    Check("cuda device", "warn", "no CUDA devices (CPU fallback possible)")
+                )
         except ImportError:
             checks.append(Check("cuda device", "warn", "ctranslate2 not importable"))
         except RuntimeError as exc:
@@ -142,7 +147,10 @@ def run_preflight(project_root: Path | None = None) -> list[Check]:
                 Check(
                     "ollama",
                     "warn",
-                    f"not reachable at {settings.ollama_base_url} (needed for Visual Capture + Extraction)",
+                    (
+                        f"not reachable at {settings.ollama_base_url} "
+                        "(needed for Visual Capture + Extraction)"
+                    ),
                 )
             )
         else:
@@ -154,7 +162,10 @@ def run_preflight(project_root: Path | None = None) -> list[Check]:
                     Check(
                         "ollama text model",
                         "warn",
-                        f"{settings.ollama_text_model} not pulled (ollama pull {settings.ollama_text_model})",
+                        (
+                            f"{settings.ollama_text_model} not pulled "
+                            f"(ollama pull {settings.ollama_text_model})"
+                        ),
                     )
                 )
             if _model_available(tags, settings.ollama_vision_model):
@@ -164,7 +175,10 @@ def run_preflight(project_root: Path | None = None) -> list[Check]:
                     Check(
                         "ollama vision model",
                         "warn",
-                        f"{settings.ollama_vision_model} not pulled (ollama pull {settings.ollama_vision_model})",
+                        (
+                            f"{settings.ollama_vision_model} not pulled "
+                            f"(ollama pull {settings.ollama_vision_model})"
+                        ),
                     )
                 )
 

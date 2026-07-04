@@ -5,14 +5,23 @@ config.local.yaml
 .handoff*.md
 
 # Python
-.venv/
-.venv.broken/
+.venv*/
 venv/
 __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
+
+# Node (if/when JS/TS tooling is added)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+dist/
+build/
+.eslintcache
 
 # Workflow artifacts (never commit meeting content)
 output/

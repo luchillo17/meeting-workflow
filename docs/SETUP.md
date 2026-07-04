@@ -4,11 +4,11 @@ Meeting Workflow runs on **Windows, Linux, and macOS**. GPU transcription uses N
 
 ## Prerequisites
 
-| Tool | Purpose |
-|------|---------|
-| [uv](https://docs.astral.sh/uv/) | Python 3.12 + dependencies |
-| [ffmpeg](https://ffmpeg.org/) | Audio extraction and frame capture |
-| [Ollama](https://ollama.com/) | Vision + structured extraction (stages #4–#5) |
+| Tool                             | Purpose                                       |
+| -------------------------------- | --------------------------------------------- |
+| [uv](https://docs.astral.sh/uv/) | Python 3.12 + dependencies                    |
+| [ffmpeg](https://ffmpeg.org/)    | Audio extraction and frame capture            |
+| [Ollama](https://ollama.com/)    | Vision + structured extraction (stages #4–#5) |
 
 **GPU (optional but recommended):** NVIDIA GPU with CUDA 12 for faster-whisper on Windows/Linux. CUDA runtime libraries are installed automatically via `pyproject.toml` (`nvidia-cublas-cu12`, `nvidia-cudnn-cu12`).
 
@@ -86,11 +86,11 @@ uv run python run.py process --force
 
 ## v1 status
 
-| Stage | Status |
-|-------|--------|
-| Transcript (ffmpeg + faster-whisper) | **Real** |
-| Visual Capture | Fixture (issue #4) |
-| Structured Extraction + Summary | Fixture (issue #5) |
+| Stage                                | Status             |
+| ------------------------------------ | ------------------ |
+| Transcript (ffmpeg + faster-whisper) | **Real**           |
+| Visual Capture                       | Fixture (issue #4) |
+| Structured Extraction + Summary      | Fixture (issue #5) |
 
 `transcript.txt` / `transcript.json` are real; `extraction.json` is placeholder until #5.
 

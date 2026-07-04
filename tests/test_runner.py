@@ -80,7 +80,9 @@ class CountingExtractor:
         return extraction
 
 
-def _runner(tmp_path: Path, recording: Path) -> tuple[WorkflowRunner, CountingTranscriber, Settings]:
+def _runner(
+    tmp_path: Path, recording: Path
+) -> tuple[WorkflowRunner, CountingTranscriber, Settings]:
     settings = Settings(
         output_dir=tmp_path / "output",
         config={},

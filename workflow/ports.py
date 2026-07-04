@@ -16,7 +16,9 @@ class Transcriber(Protocol):
 
 
 class FrameExtractor(Protocol):
-    def extract(self, recording: Path, transcript: TranscriptResult, output_dir: Path) -> list[Path]: ...
+    def extract(
+        self, recording: Path, transcript: TranscriptResult, output_dir: Path
+    ) -> list[Path]: ...
 
 
 class VisionAnalyzer(Protocol):

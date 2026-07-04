@@ -43,7 +43,8 @@ class Settings:
             output_dir=output_dir,
             config=config,
             ollama_base_url=os.environ.get(
-                "OLLAMA_BASE_URL", config.get("ollama", {}).get("base_url", "http://localhost:11434")
+                "OLLAMA_BASE_URL",
+                config.get("ollama", {}).get("base_url", "http://localhost:11434"),
             ),
             ollama_text_model=os.environ.get(
                 "OLLAMA_TEXT_MODEL", config.get("ollama", {}).get("text_model", "qwen2.5:7b")

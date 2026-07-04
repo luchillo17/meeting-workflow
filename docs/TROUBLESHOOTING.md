@@ -25,13 +25,25 @@ Use `uv run meeting-workflow process`, not an old virtualenv from before the rep
 
 ### Stale venv / `meeting-pipeline\.venv` in errors
 
-The project was renamed from `meeting-pipeline`. Recreate the environment:
+The project was renamed from `meeting-pipeline`. The fix is to **delete** `.venv` and recreate — do not rename it to `.venv.broken` or similar.
 
-```bash
-rm -rf .venv          # Linux/macOS
-# Remove-Item -Recurse -Force .venv   # Windows
+**Windows:** fully quit Cursor first (File → Exit), then in an external terminal:
+
+```powershell
+Remove-Item -Recurse -Force .venv
 uv sync
 ```
+
+**Linux/macOS:**
+
+```bash
+rm -rf .venv
+uv sync
+```
+
+Cursor locks files under the workspace; deleting `.venv` from inside the IDE often fails with “Access denied”.
+
+`scripts/install.py` detects a broken venv after `uv sync` and prints these steps.
 
 ### `ffmpeg` not found
 

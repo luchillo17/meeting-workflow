@@ -1,0 +1,7 @@
+output/
+staging/
+.venv*/
+node_modules/
+uv.lock
+*.mp4
+*.wav

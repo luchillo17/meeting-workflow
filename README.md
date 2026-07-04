@@ -23,14 +23,14 @@ Platform-specific prerequisites and GPU notes: **[docs/SETUP.md](docs/SETUP.md)*
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `uv run meeting-workflow setup` | Create `.env`, ensure output dir |
-| `uv run meeting-workflow setup --pull-models` | Also `ollama pull` configured models |
-| `uv run meeting-workflow check` | Preflight: ffmpeg, CUDA, Ollama, paths |
-| `uv run meeting-workflow process` | Workflow Run (uses `RECORDING_PATH` from `.env`) |
-| `uv run meeting-workflow process --file PATH` | Process a specific recording |
-| `uv run meeting-workflow process --force` | Reprocess even if Extraction exists |
+| Command                                       | Description                                      |
+| --------------------------------------------- | ------------------------------------------------ |
+| `uv run meeting-workflow setup`               | Create `.env`, ensure output dir                 |
+| `uv run meeting-workflow setup --pull-models` | Also `ollama pull` configured models             |
+| `uv run meeting-workflow check`               | Preflight: ffmpeg, CUDA, Ollama, paths           |
+| `uv run meeting-workflow process`             | Workflow Run (uses `RECORDING_PATH` from `.env`) |
+| `uv run meeting-workflow process --file PATH` | Process a specific recording                     |
+| `uv run meeting-workflow process --force`     | Reprocess even if Extraction exists              |
 
 Legacy entrypoint: `uv run python run.py process`
 
@@ -44,6 +44,23 @@ output/<slug>/
   visual_content.json
   extraction.json
   summary.md
+```
+
+## Development
+
+Auto-format runs on **pre-commit** (staged files only):
+
+| Language                    | Tool                                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------- |
+| Python                      | [Ruff](https://docs.astral.sh/ruff/) (`format` + lint fix)                                        |
+| Markdown, YAML, JSON, JS/TS | [Prettier](https://prettier.io/)                                                                  |
+| PowerShell (`.ps1`)         | Prettier + [prettier-plugin-powershell](https://github.com/Nick2bad4u/Prettier-Plugin-Powershell) |
+| Shell (`.sh`)               | [shfmt](https://github.com/mvdan/sh)                                                              |
+
+```bash
+uv sync
+uv run pre-commit install          # once per clone
+uv run pre-commit run --all-files  # format entire repo
 ```
 
 ## Docs
