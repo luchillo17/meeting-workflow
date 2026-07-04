@@ -8,10 +8,10 @@ Add real **Visual Capture**: ffmpeg frame extraction (scene-change + interval fa
 
 ## Acceptance criteria
 
-- [ ] Frames extracted when a recording has scene changes or visual-cue segments in the Transcript
-- [ ] Frame count respects `max_frames`; images resized per config
-- [ ] `visual_content.json` lists timestamp, type, and description per frame
-- [ ] WorkflowRunner tests pass with fake vision adapter
+- [x] Frames extracted when a recording has scene changes or visual-cue segments in the Transcript
+- [x] Frame count respects `max_frames`; images resized per config
+- [x] `visual_content.json` lists timestamp, type, and description per frame
+- [x] WorkflowRunner tests pass with fake vision adapter
 
 ## Blocked by
 

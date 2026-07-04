@@ -12,15 +12,14 @@ from pathlib import Path
 from rich.console import Console
 
 from workflow.cuda_paths import ensure_cuda_dll_paths
-from workflow.fixtures import (
-    FixtureExtractor,
-    FixtureFrameExtractor,
-    FixtureVisionAnalyzer,
-)
+from workflow.fixtures import FixtureExtractor
+from workflow.frames import FfmpegFrameExtractor, frames_bundle_valid, load_transcript_for_frames
 from workflow.preflight import Check, has_failures, run_preflight
 from workflow.runner import WorkflowRunner
 from workflow.settings import Settings
 from workflow.transcriber import WhisperTranscriber
+from workflow.utils import invalidate_downstream_artifacts, slugify
+from workflow.vision import OllamaVisionAnalyzer
 
 _STATUS_STYLE = {"ok": "green", "warn": "yellow", "fail": "red"}
 
@@ -35,6 +34,19 @@ def _build_parser() -> argparse.ArgumentParser:
     process = sub.add_parser("process", help="Run workflow on one Meeting Recording")
     process.add_argument("--file", type=Path, help="Path to .mp4 (overrides RECORDING_PATH)")
     process.add_argument("--force", action="store_true", help="Reprocess even if Extraction exists")
+
+    frames = sub.add_parser(
+        "frames", help="Extract frames only (uses existing transcript.json if present)"
+    )
+    frames.add_argument("--file", type=Path, help="Path to .mp4 (overrides RECORDING_PATH)")
+    frames.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Extraction output directory (default: OUTPUT_DIR/<slug>/)",
+    )
+    frames.add_argument(
+        "--force", action="store_true", help="Re-extract even if frames.json exists"
+    )
 
     sub.add_parser("check", help="Verify prerequisites and configuration")
 
@@ -100,6 +112,16 @@ def cmd_setup(args: argparse.Namespace) -> int:
     return 0
 
 
+def _config_with_env(settings: Settings) -> dict:
+    merged = dict(settings.config)
+    ollama = dict(merged.get("ollama", {}))
+    ollama["base_url"] = settings.ollama_base_url
+    ollama["text_model"] = settings.ollama_text_model
+    ollama["vision_model"] = settings.ollama_vision_model
+    merged["ollama"] = ollama
+    return merged
+
+
 def cmd_process(args: argparse.Namespace) -> int:
     ensure_cuda_dll_paths()
     settings = Settings.load()
@@ -108,12 +130,13 @@ def cmd_process(args: argparse.Namespace) -> int:
         print("Error: provide --file or set RECORDING_PATH in .env", file=sys.stderr)
         return 1
 
-    transcriber = WhisperTranscriber(settings.config)
+    config = _config_with_env(settings)
+    transcriber = WhisperTranscriber(config)
     runner = WorkflowRunner(
         settings,
         transcriber,
-        FixtureFrameExtractor(),
-        FixtureVisionAnalyzer(),
+        FfmpegFrameExtractor(config),
+        OllamaVisionAnalyzer(config),
         FixtureExtractor(),
     )
     try:
@@ -127,6 +150,46 @@ def cmd_process(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_frames(args: argparse.Namespace) -> int:
+    console = Console()
+    settings = Settings.load()
+    recording = args.file or Path(os.environ.get("RECORDING_PATH", ""))
+    if not recording or str(recording) == ".":
+        print("Error: provide --file or set RECORDING_PATH in .env", file=sys.stderr)
+        return 1
+    if not recording.is_file():
+        print(f"Error: Meeting Recording not found: {recording}", file=sys.stderr)
+        return 1
+
+    output_dir = args.output_dir or (settings.output_dir / slugify(recording.name))
+    if frames_bundle_valid(output_dir) and not args.force:
+        console.print(
+            f"[yellow]Skipping[/yellow] - frames already exist at {output_dir / 'frames.json'}"
+        )
+        console.print("Use --force to re-extract.")
+        return 0
+
+    invalidate_downstream_artifacts(output_dir)
+
+    transcript = load_transcript_for_frames(output_dir)
+    if transcript.segments:
+        count = len(transcript.segments)
+        console.print(f"[dim]Using transcript.json for visual-cue boost ({count} segments)[/dim]")
+    else:
+        console.print("[dim]No transcript.json — scene + interval sampling only[/dim]")
+
+    config = _config_with_env(settings)
+    extractor = FfmpegFrameExtractor(config)
+    try:
+        paths = extractor.extract(recording, transcript, output_dir)
+    except (RuntimeError, ValueError, OSError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    console.print(f"[green]Extracted {len(paths)} frame(s)[/green] -> {output_dir / 'frames'}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.command == "check":
@@ -135,4 +198,6 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_setup(args)
     if args.command == "process":
         return cmd_process(args)
+    if args.command == "frames":
+        return cmd_frames(args)
     return 1

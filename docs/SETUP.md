@@ -89,7 +89,7 @@ uv run python run.py process --force
 | Stage                                | Status             |
 | ------------------------------------ | ------------------ |
 | Transcript (ffmpeg + faster-whisper) | **Real**           |
-| Visual Capture                       | Fixture (issue #4) |
+| Visual Capture (ffmpeg + Ollama VL)  | **Real**           |
 | Structured Extraction + Summary      | Fixture (issue #5) |
 
 `transcript.txt` / `transcript.json` are real; `extraction.json` is placeholder until #5.

@@ -13,9 +13,15 @@ whisper:
   language: "es"
 
 frames:
-  scene_threshold: 0.35 # 0-1, higher = fewer scene-change frames
-  interval_seconds: 25 # fallback interval outside scene changes
-  max_frames: 40 # cap per meeting (pilot-friendly)
+  scene_threshold: 0.25 # lower catches Teams tile/layout changes (e.g. someone joining)
+  interval_seconds: 60 # gap-fill step when no scene/cue for a long stretch
+  gap_fill_seconds: 120 # only add interval samples after this many seconds without a keyframe
+  max_frames: 20 # cap per meeting (pilot-friendly)
+  min_spacing_seconds: 30 # applies to interval samples only; scene/cue always kept
+  dedup_global: true # collapse same layout across the whole meeting (ignores speaker highlight)
+  dedup_window_seconds: 20 # used only when dedup_global is false
+  dedup_hash_threshold: 8 # layout hash distance; higher tolerates minor UI chrome
+  dedup_layout_blur: 4 # blur radius before hashing; smooths Teams active-speaker rings
   jpeg_quality: 3 # ffmpeg -q:v (lower = better quality)
   max_width: 1280
 
@@ -23,7 +29,7 @@ visual_cues:
   - tablero
   - diagrama
   - pantalla
-  - dibuj
+  - dibujo
   - figura
   - matriz
   - flujo

@@ -8,7 +8,7 @@ from rich.console import Console
 
 from workflow.ports import Extractor, FrameExtractor, Transcriber, VisionAnalyzer
 from workflow.settings import Settings
-from workflow.utils import slugify
+from workflow.utils import invalidate_downstream_artifacts, slugify
 
 
 class WorkflowRunner:
@@ -43,6 +43,7 @@ class WorkflowRunner:
             return output_dir
 
         output_dir.mkdir(parents=True, exist_ok=True)
+        invalidate_downstream_artifacts(output_dir)
         self.console.print(f"[bold]Workflow Run[/bold] -> {recording.name}")
 
         self.console.print("  [cyan]Transcript[/cyan]")
