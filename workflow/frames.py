@@ -55,8 +55,10 @@ def frames_bundle_valid(output_dir: Path) -> bool:
         data = json.loads(meta_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return False
-    if not isinstance(data, list) or not data:
+    if not isinstance(data, list):
         return False
+    if not data:
+        return True
     for entry in data:
         if not isinstance(entry, dict):
             return False
@@ -189,9 +191,6 @@ def merge_capture_timestamps(
                 if _TRIGGER_PRIORITY[trigger] > _TRIGGER_PRIORITY[spaced[-1][1]]:
                     spaced[-1] = (min(spaced[-1][0], ts), trigger)
                 continue
-            if spaced and ts - spaced[-1][0] < min_spacing_seconds:
-                if _TRIGGER_PRIORITY[trigger] > _TRIGGER_PRIORITY[spaced[-1][1]]:
-                    spaced.pop()
             spaced.append((ts, trigger))
             continue
         if spaced and ts - spaced[-1][0] < min_spacing_seconds:

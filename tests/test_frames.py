@@ -59,6 +59,29 @@ def test_load_transcript_for_frames_invalid_json_returns_empty(tmp_path: Path) -
     assert transcript.text == ""
 
 
+def test_merge_capture_timestamps_keeps_scene_near_visual_cue() -> None:
+    merged = merge_capture_timestamps(
+        duration=120.0,
+        scene_times=[2.0],
+        interval_times=[],
+        visual_cue_times=[20.0],
+        max_frames=10,
+        min_spacing_seconds=30.0,
+    )
+
+    triggers = dict(merged)
+    assert triggers[2.0] == "scene"
+    assert triggers[20.0] == "visual_cue"
+
+
+def test_frames_bundle_valid_accepts_empty_list(tmp_path: Path) -> None:
+    out = tmp_path / "extraction"
+    out.mkdir()
+    (out / "frames.json").write_text("[]", encoding="utf-8")
+
+    assert frames_bundle_valid(out) is True
+
+
 def test_frames_bundle_valid_requires_existing_jpegs(tmp_path: Path) -> None:
     out = tmp_path / "extraction"
     frames_dir = out / "frames"
@@ -209,7 +232,8 @@ def test_merge_capture_timestamps_enforces_min_spacing() -> None:
     assert 2.0 in timestamps
     assert 25.0 not in timestamps  # only 23s after scene; static-screen oversample
     assert 50.0 in timestamps
-    assert all(b - a >= 30.0 for a, b in zip(timestamps, timestamps[1:], strict=False))
+    interval_times = [ts for ts, trigger in merged if trigger == "interval"]
+    assert all(b - a >= 30.0 for a, b in zip(interval_times, interval_times[1:], strict=False))
 
 
 def test_average_hash_detects_identical_images(tmp_path: Path) -> None:

@@ -169,8 +169,7 @@ def cmd_frames(args: argparse.Namespace) -> int:
         console.print("Use --force to re-extract.")
         return 0
 
-    if args.force:
-        invalidate_downstream_artifacts(output_dir)
+    invalidate_downstream_artifacts(output_dir)
 
     transcript = load_transcript_for_frames(output_dir)
     if transcript.segments:
@@ -187,7 +186,6 @@ def cmd_frames(args: argparse.Namespace) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
-    invalidate_downstream_artifacts(output_dir)
     console.print(f"[green]Extracted {len(paths)} frame(s)[/green] -> {output_dir / 'frames'}")
     return 0
 
