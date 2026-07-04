@@ -25,11 +25,19 @@ ollama pull qwen2.5:7b
 ollama pull qwen2.5vl:7b
 ```
 
-## Usage (planned)
+## Usage
+
+Set `RECORDING_PATH` in `.env`, then:
 
 ```powershell
-python run.py process --file "path\to\recording.mp4"
-python run.py process --file "path\to\recording.mp4" --force
+python run.py process              # uses RECORDING_PATH from .env
+python run.py process --force      # reprocess even if Extraction exists
+```
+
+Or pass a file explicitly (overrides `.env`):
+
+```powershell
+python run.py process --file "C:\path\to\recording.mp4"
 ```
 
 ## Output layout
