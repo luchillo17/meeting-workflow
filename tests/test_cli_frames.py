@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from workflow.cli import cmd_frames
@@ -20,7 +21,14 @@ def test_cmd_frames_skips_when_frames_exist(tmp_path: Path, monkeypatch) -> None
     recording.write_bytes(b"video")
     out = tmp_path / "output" / "meeting"
     out.mkdir(parents=True)
-    (out / "frames.json").write_text("[]", encoding="utf-8")
+    frames_dir = out / "frames"
+    frames_dir.mkdir(parents=True)
+    frame = frames_dir / "frame_0001.jpg"
+    frame.write_bytes(b"jpeg")
+    (out / "frames.json").write_text(
+        json.dumps([{"timestamp": 1.0, "path": str(frame), "trigger": "scene"}]),
+        encoding="utf-8",
+    )
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("RECORDING_PATH", str(recording))
@@ -36,7 +44,14 @@ def test_cmd_frames_force_calls_extractor(tmp_path: Path, monkeypatch) -> None:
     recording.write_bytes(b"video")
     out = tmp_path / "output" / "meeting"
     out.mkdir(parents=True)
-    (out / "frames.json").write_text("[]", encoding="utf-8")
+    frames_dir = out / "frames"
+    frames_dir.mkdir(parents=True)
+    frame = frames_dir / "frame_0001.jpg"
+    frame.write_bytes(b"jpeg")
+    (out / "frames.json").write_text(
+        json.dumps([{"timestamp": 1.0, "path": str(frame), "trigger": "scene"}]),
+        encoding="utf-8",
+    )
     (out / "visual_content.json").write_text("[]", encoding="utf-8")
     calls: list[Path] = []
 

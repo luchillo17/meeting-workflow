@@ -61,5 +61,11 @@ def write_json(path: Path, data: dict | list) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+def invalidate_downstream_artifacts(output_dir: Path) -> None:
+    """Remove artifacts that depend on frames/vision so failed reruns cannot leave stale data."""
+    for name in ("visual_content.json", "extraction.json", "summary.md"):
+        (output_dir / name).unlink(missing_ok=True)
+
+
 def utc_now_iso() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat()

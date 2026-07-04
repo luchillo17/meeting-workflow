@@ -6,6 +6,8 @@ import base64
 import json
 from pathlib import Path
 
+import pytest
+
 from workflow.vision import OllamaVisionAnalyzer, format_timestamp
 
 
@@ -68,3 +70,35 @@ def test_analyze_skips_missing_frame_files(tmp_path: Path) -> None:
     analyzer = OllamaVisionAnalyzer({"ollama": {}}, chat_fn=lambda *_a, **_k: {})
 
     assert analyzer.analyze([missing], tmp_path) == []
+
+
+def test_analyze_removes_stale_visual_content_on_failure(tmp_path: Path) -> None:
+    frames_dir = tmp_path / "frames"
+    frames_dir.mkdir()
+    frame = frames_dir / "frame_0001.jpg"
+    frame.write_bytes(b"jpeg-data")
+    (tmp_path / "frames.json").write_text(
+        json.dumps([{"timestamp": 1.0, "path": str(frame), "trigger": "scene"}]),
+        encoding="utf-8",
+    )
+    stale = tmp_path / "visual_content.json"
+    stale.write_text('[{"timestamp": "00:00:00", "type": "other", "description": "stale"}]')
+
+    def fail_chat(*_args: object, **_kwargs: object) -> dict:
+        raise RuntimeError("vision failed")
+
+    analyzer = OllamaVisionAnalyzer({"ollama": {}}, chat_fn=fail_chat)
+
+    with pytest.raises(RuntimeError, match="vision failed"):
+        analyzer.analyze([frame], tmp_path)
+
+    assert not stale.exists()
+    assert not (tmp_path / "extraction.json").exists()
+
+
+def test_load_timestamps_tolerates_invalid_frames_json(tmp_path: Path) -> None:
+    (tmp_path / "frames.json").write_text("{bad", encoding="utf-8")
+
+    mapping = OllamaVisionAnalyzer._load_timestamps(tmp_path)
+
+    assert mapping == {}

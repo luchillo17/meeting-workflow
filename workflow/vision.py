@@ -9,7 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 from urllib import request
 
-from workflow.utils import write_json
+from workflow.utils import invalidate_downstream_artifacts, write_json
 
 _VISION_PROMPT = (
     "Describe el contenido visual de esta imagen de una reunión. "
@@ -63,6 +63,7 @@ class OllamaVisionAnalyzer:
         self._chat = chat_fn or self._chat_http
 
     def analyze(self, frame_paths: list[Path], output_dir: Path) -> list[dict]:
+        invalidate_downstream_artifacts(output_dir)
         timestamps = self._load_timestamps(output_dir)
         visual: list[dict] = []
         for frame_path in frame_paths:
@@ -120,7 +121,10 @@ class OllamaVisionAnalyzer:
         meta_path = output_dir / "frames.json"
         if not meta_path.is_file():
             return {}
-        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        try:
+            data = json.loads(meta_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return {}
         if not isinstance(data, list):
             return {}
         mapping: dict[str, float] = {}

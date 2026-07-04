@@ -37,19 +37,51 @@ def load_transcript_for_frames(output_dir: Path) -> FrameTranscript:
     segments = data.get("segments", [])
     if not isinstance(segments, list):
         segments = []
-    text = " ".join(
-        str(segment.get("text", "")) for segment in segments if isinstance(segment, dict)
-    )
-    return FrameTranscript(segments=segments, text=text)
+    valid_segments = [
+        segment
+        for segment in segments
+        if isinstance(segment, dict) and segment.get("start") is not None
+    ]
+    text = " ".join(str(segment.get("text", "")) for segment in valid_segments)
+    return FrameTranscript(segments=valid_segments, text=text)
+
+
+def frames_bundle_valid(output_dir: Path) -> bool:
+    """True when frames.json exists and every listed JPEG is present."""
+    meta_path = output_dir / "frames.json"
+    if not meta_path.is_file():
+        return False
+    try:
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(data, list) or not data:
+        return False
+    for entry in data:
+        if not isinstance(entry, dict):
+            return False
+        path = entry.get("path")
+        if not path or not Path(str(path)).is_file():
+            return False
+    return True
 
 
 def visual_cue_timestamps(segments: list[dict], cues: list[str]) -> list[float]:
     lowered = [cue.lower() for cue in cues]
     times: list[float] = []
     for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        start = segment.get("start")
+        if start is None:
+            continue
+        try:
+            ts = float(start)
+        except (TypeError, ValueError):
+            continue
         text = str(segment.get("text", "")).lower()
         if any(cue in text for cue in lowered):
-            times.append(float(segment["start"]))
+            times.append(ts)
     return times
 
 
@@ -176,7 +208,7 @@ def merge_capture_timestamps(
         return _subsample_evenly(cues, max_frames)
 
     budget = max_frames - len(cues)
-    return sorted(cues + others[:budget])
+    return sorted(cues + _subsample_evenly(others, budget))
 
 
 def average_hash(path: Path, *, hash_size: int = 8) -> int:
@@ -275,6 +307,7 @@ class FfmpegFrameExtractor:
         output_dir.mkdir(parents=True, exist_ok=True)
         frames_dir = output_dir / "frames"
         frames_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "frames.json").unlink(missing_ok=True)
         for stale in frames_dir.glob("frame_*.jpg"):
             stale.unlink()
 

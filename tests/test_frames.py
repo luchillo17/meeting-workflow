@@ -12,6 +12,7 @@ from workflow.frames import (
     FfmpegFrameExtractor,
     average_hash,
     dedupe_near_duplicate_frames,
+    frames_bundle_valid,
     gap_fill_interval_timestamps,
     hamming_distance,
     layout_hash,
@@ -58,6 +59,22 @@ def test_load_transcript_for_frames_invalid_json_returns_empty(tmp_path: Path) -
     assert transcript.text == ""
 
 
+def test_frames_bundle_valid_requires_existing_jpegs(tmp_path: Path) -> None:
+    out = tmp_path / "extraction"
+    frames_dir = out / "frames"
+    frames_dir.mkdir(parents=True)
+    frame = frames_dir / "frame_0001.jpg"
+    frame.write_bytes(b"jpeg")
+    (out / "frames.json").write_text(
+        json.dumps([{"timestamp": 1.0, "path": str(frame), "trigger": "scene"}]),
+        encoding="utf-8",
+    )
+
+    assert frames_bundle_valid(out) is True
+    frame.unlink()
+    assert frames_bundle_valid(out) is False
+
+
 def test_visual_cue_timestamps_finds_matching_segments() -> None:
     segments = [
         {"start": 0.0, "end": 5.0, "text": "Hola a todos."},
@@ -69,6 +86,18 @@ def test_visual_cue_timestamps_finds_matching_segments() -> None:
     times = visual_cue_timestamps(segments, cues)
 
     assert times == [10.0]
+
+
+def test_visual_cue_timestamps_skips_malformed_segments() -> None:
+    segments = [
+        {"text": "sin start"},
+        {"start": "bad", "text": "tablero"},
+        {"start": 30.0, "text": "veamos el tablero"},
+    ]
+
+    times = visual_cue_timestamps(segments, ["tablero"])
+
+    assert times == [30.0]
 
 
 def test_merge_capture_timestamps_respects_max_and_priority() -> None:
@@ -85,7 +114,7 @@ def test_merge_capture_timestamps_respects_max_and_priority() -> None:
     assert merged[0] == (0.0, "scene")
     assert merged[1][0] == pytest.approx(10.0)
     assert merged[1][1] == "visual_cue"
-    assert merged[2] == (25.0, "interval")
+    assert merged[2][1] == "interval"
 
 
 def test_merge_capture_timestamps_keeps_all_visual_cues_when_over_budget() -> None:
@@ -131,6 +160,23 @@ def test_merge_capture_timestamps_keeps_nearby_visual_cues() -> None:
 
     cue_times = [ts for ts, trigger in merged if trigger == "visual_cue"]
     assert cue_times == [10.0, 11.5, 40.0]
+
+
+def test_merge_capture_timestamps_subsamples_scene_and_interval_evenly() -> None:
+    merged = merge_capture_timestamps(
+        duration=600.0,
+        scene_times=[50.0, 150.0, 250.0, 350.0, 450.0, 550.0],
+        interval_times=[],
+        visual_cue_times=[100.0, 200.0],
+        max_frames=4,
+        min_spacing_seconds=0,
+        cluster_seconds=0,
+    )
+
+    assert len(merged) == 4
+    scene_times = [ts for ts, trigger in merged if trigger == "scene"]
+    assert 50.0 in scene_times
+    assert 550.0 in scene_times
 
 
 def test_merge_capture_timestamps_keeps_scene_even_when_close_to_interval() -> None:

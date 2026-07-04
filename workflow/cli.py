@@ -13,12 +13,12 @@ from rich.console import Console
 
 from workflow.cuda_paths import ensure_cuda_dll_paths
 from workflow.fixtures import FixtureExtractor
-from workflow.frames import FfmpegFrameExtractor, load_transcript_for_frames
+from workflow.frames import FfmpegFrameExtractor, frames_bundle_valid, load_transcript_for_frames
 from workflow.preflight import Check, has_failures, run_preflight
 from workflow.runner import WorkflowRunner
 from workflow.settings import Settings
 from workflow.transcriber import WhisperTranscriber
-from workflow.utils import slugify
+from workflow.utils import invalidate_downstream_artifacts, slugify
 from workflow.vision import OllamaVisionAnalyzer
 
 _STATUS_STYLE = {"ok": "green", "warn": "yellow", "fail": "red"}
@@ -162,19 +162,15 @@ def cmd_frames(args: argparse.Namespace) -> int:
         return 1
 
     output_dir = args.output_dir or (settings.output_dir / slugify(recording.name))
-    frames_meta = output_dir / "frames.json"
-    if frames_meta.exists() and not args.force:
-        console.print(f"[yellow]Skipping[/yellow] - frames already exist at {frames_meta}")
+    if frames_bundle_valid(output_dir) and not args.force:
+        console.print(
+            f"[yellow]Skipping[/yellow] - frames already exist at {output_dir / 'frames.json'}"
+        )
         console.print("Use --force to re-extract.")
         return 0
 
     if args.force:
-        for stale in (
-            output_dir / "visual_content.json",
-            output_dir / "extraction.json",
-            output_dir / "summary.md",
-        ):
-            stale.unlink(missing_ok=True)
+        invalidate_downstream_artifacts(output_dir)
 
     transcript = load_transcript_for_frames(output_dir)
     if transcript.segments:
@@ -191,6 +187,7 @@ def cmd_frames(args: argparse.Namespace) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
+    invalidate_downstream_artifacts(output_dir)
     console.print(f"[green]Extracted {len(paths)} frame(s)[/green] -> {output_dir / 'frames'}")
     return 0
 
