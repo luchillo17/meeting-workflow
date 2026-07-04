@@ -10,10 +10,10 @@ Unload the whisper model before later stages (sequential VRAM use).
 
 ## Acceptance criteria
 
-- [ ] Real Meeting Recording produces readable Spanish `transcript.txt` and segmented `transcript.json`
-- [ ] Transcriber adapter is injectable; WorkflowRunner tests still pass with fakes
-- [ ] Whisper model is not held in memory after transcription stage completes
-- [ ] Audio extraction failures surface a clear error
+- [x] Real Meeting Recording produces readable Spanish `transcript.txt` and segmented `transcript.json`
+- [x] Transcriber adapter is injectable; WorkflowRunner tests still pass with fakes
+- [x] Whisper model is not held in memory after transcription stage completes
+- [x] Audio extraction failures surface a clear error
 
 ## Blocked by
 

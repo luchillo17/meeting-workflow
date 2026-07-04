@@ -2,21 +2,21 @@
 
 ollama:
   base_url: "http://localhost:11434"
-  text_model: "qwen2.5:7b"       # use qwen2.5:14b for higher quality
+  text_model: "qwen2.5:7b" # use qwen2.5:14b for higher quality
   vision_model: "qwen2.5vl:7b"
   timeout_seconds: 300
 
 whisper:
-  model: "large-v3"              # use "medium" for faster pilot runs
+  model: "large-v3" # use "medium" for faster pilot runs
   device: "cuda"
   compute_type: "float16"
   language: "es"
 
 frames:
-  scene_threshold: 0.35          # 0-1, higher = fewer scene-change frames
-  interval_seconds: 25           # fallback interval outside scene changes
-  max_frames: 40                 # cap per meeting (pilot-friendly)
-  jpeg_quality: 3                # ffmpeg -q:v (lower = better quality)
+  scene_threshold: 0.35 # 0-1, higher = fewer scene-change frames
+  interval_seconds: 25 # fallback interval outside scene changes
+  max_frames: 40 # cap per meeting (pilot-friendly)
+  jpeg_quality: 3 # ffmpeg -q:v (lower = better quality)
   max_width: 1280
 
 visual_cues:

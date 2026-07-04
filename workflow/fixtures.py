@@ -27,7 +27,9 @@ class FixtureTranscriber:
 
 
 class FixtureFrameExtractor:
-    def extract(self, recording: Path, transcript: SimpleTranscript, output_dir: Path) -> list[Path]:
+    def extract(
+        self, recording: Path, transcript: SimpleTranscript, output_dir: Path
+    ) -> list[Path]:
         frames_dir = output_dir / "frames"
         frames_dir.mkdir(parents=True, exist_ok=True)
         frame_path = frames_dir / "frame_0001.jpg"
@@ -79,5 +81,12 @@ class FixtureExtractor:
         return extraction
 
 
-def fixture_adapters() -> tuple[FixtureTranscriber, FixtureFrameExtractor, FixtureVisionAnalyzer, FixtureExtractor]:
-    return FixtureTranscriber(), FixtureFrameExtractor(), FixtureVisionAnalyzer(), FixtureExtractor()
+def fixture_adapters() -> tuple[
+    FixtureTranscriber, FixtureFrameExtractor, FixtureVisionAnalyzer, FixtureExtractor
+]:
+    return (
+        FixtureTranscriber(),
+        FixtureFrameExtractor(),
+        FixtureVisionAnalyzer(),
+        FixtureExtractor(),
+    )

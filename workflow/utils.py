@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -62,4 +62,4 @@ def write_json(path: Path, data: dict) -> None:
 
 
 def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return datetime.now(UTC).replace(microsecond=0).isoformat()
