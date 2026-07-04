@@ -6,6 +6,7 @@ config.local.yaml
 
 # Python
 .venv/
+.venv.broken/
 venv/
 __pycache__/
 *.py[cod]

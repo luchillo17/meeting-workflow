@@ -2,43 +2,37 @@
 
 Local-first workflow that turns Teams **Meeting Recordings** (`.mp4`) into **Extractions**: Spanish Transcript, Visual Capture, Structured Extraction (`extraction.json`), and Summary (`summary.md`).
 
-Runs on Windows with faster-whisper + Ollama. ~$0 API cost.
+Runs locally with faster-whisper + Ollama. ~$0 API cost. **Windows, Linux, and macOS** supported.
 
 ## Status
 
-**v1 in development.** Domain model and PRD are defined; implementation follows the [PRD issue](https://github.com/luchillo17/meeting-workflow/issues/1).
+**v1 in development** — Transcript stage is real; Visual Capture and Structured Extraction are still fixture-backed ([#4](https://github.com/luchillo17/meeting-workflow/issues/4), [#5](https://github.com/luchillo17/meeting-workflow/issues/5)).
 
-## Prerequisites
+## Quick start
 
-- Windows 10/11, Python 3.12, ffmpeg, Ollama
-- NVIDIA GPU with CUDA (tested target: RTX 4080, 16 GB VRAM)
+```bash
+# Install deps + create .env
+python3 scripts/install.py
 
-## Setup
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-copy .env.example .env
 # Edit .env: RECORDING_PATH, OUTPUT_DIR
-ollama pull qwen2.5:7b
-ollama pull qwen2.5vl:7b
+uv run meeting-workflow check
+uv run meeting-workflow process --force
 ```
 
-## Usage
+Platform-specific prerequisites and GPU notes: **[docs/SETUP.md](docs/SETUP.md)**
 
-Set `RECORDING_PATH` in `.env`, then:
+## Commands
 
-```powershell
-python run.py process              # uses RECORDING_PATH from .env
-python run.py process --force      # reprocess even if Extraction exists
-```
+| Command | Description |
+|---------|-------------|
+| `uv run meeting-workflow setup` | Create `.env`, ensure output dir |
+| `uv run meeting-workflow setup --pull-models` | Also `ollama pull` configured models |
+| `uv run meeting-workflow check` | Preflight: ffmpeg, CUDA, Ollama, paths |
+| `uv run meeting-workflow process` | Workflow Run (uses `RECORDING_PATH` from `.env`) |
+| `uv run meeting-workflow process --file PATH` | Process a specific recording |
+| `uv run meeting-workflow process --force` | Reprocess even if Extraction exists |
 
-Or pass a file explicitly (overrides `.env`):
-
-```powershell
-python run.py process --file "C:\path\to\recording.mp4"
-```
+Legacy entrypoint: `uv run python run.py process`
 
 ## Output layout
 
@@ -54,6 +48,8 @@ output/<slug>/
 
 ## Docs
 
+- [docs/SETUP.md](docs/SETUP.md) — install (all platforms)
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — common errors
 - [CONTEXT.md](CONTEXT.md) — ubiquitous language
 - [docs/adr/](docs/adr/) — architectural decisions
 
