@@ -82,6 +82,24 @@ uv run meeting-workflow process --force
 
 If the transcript is very long, the model only sees the first ~24k characters.
 
+### `transcript.txt` starts with many repeated "Gracias." (or similar)
+
+Whisper often hallucinates short polite phrases on silence (Teams waiting room, muted intro). Enable anti-hallucination settings in `config.yaml`:
+
+```yaml
+whisper:
+  vad_filter: true
+  condition_on_previous_text: false
+  hallucination_silence_threshold: 2.0
+  filter_hallucination_phrases: true
+```
+
+Then re-transcribe:
+
+```bash
+uv run meeting-workflow process --force
+```
+
 ### Ollama not reachable
 
 Start Ollama, then:

@@ -11,6 +11,13 @@ whisper:
   device: "cuda"
   compute_type: "float16"
   language: "es"
+  vad_filter: true # Silero VAD — skip non-speech audio before decoding
+  condition_on_previous_text: false # reduces hallucination carry-over between windows
+  hallucination_silence_threshold: 2.0 # skip suspicious segments in long silence (needs word_timestamps)
+  no_speech_threshold: 0.6 # segment logprob threshold for silence
+  compression_ratio_threshold: 2.4 # gzip ratio guard for repetitive garbage
+  log_prob_threshold: -1.0 # average logprob guard
+  filter_hallucination_phrases: true # post-filter known silence phrases (e.g. repeated "Gracias.")
 
 frames:
   scene_threshold: 0.25 # lower catches Teams tile/layout changes (e.g. someone joining)
