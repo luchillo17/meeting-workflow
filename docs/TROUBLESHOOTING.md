@@ -71,9 +71,16 @@ Idempotency is working. Re-run with:
 uv run meeting-workflow process --force
 ```
 
-### `extraction.json` looks like fixture data
+### `extraction.json` looks wrong or empty
 
-Expected until issue #5. Transcript is real; Structured Extraction is still mocked.
+Re-run with `--force` after checking Ollama is running and the text model is pulled:
+
+```bash
+uv run meeting-workflow setup --pull-models
+uv run meeting-workflow process --force
+```
+
+If the transcript is very long, the model only sees the first ~24k characters.
 
 ### Ollama not reachable
 

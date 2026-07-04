@@ -6,7 +6,7 @@ Runs locally with faster-whisper + Ollama. ~$0 API cost. **Windows, Linux, and m
 
 ## Status
 
-**v1 in development** — Transcript and Visual Capture are real; Structured Extraction is still fixture-backed ([#5](https://github.com/luchillo17/meeting-workflow/issues/5)).
+**v1 in development** — Transcript, Visual Capture, and Structured Extraction are real ([#5](https://github.com/luchillo17/meeting-workflow/issues/5) complete; GPU pilot tuning in [#6](https://github.com/luchillo17/meeting-workflow/issues/6)).
 
 ## Quick start
 

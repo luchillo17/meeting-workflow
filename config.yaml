@@ -41,3 +41,4 @@ visual_cues:
 
 output:
   base_dir: "output"
+  language: "es" # extraction + vision text output (ISO 639-1); defaults to whisper.language

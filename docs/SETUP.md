@@ -86,13 +86,13 @@ uv run python run.py process --force
 
 ## v1 status
 
-| Stage                                | Status             |
-| ------------------------------------ | ------------------ |
-| Transcript (ffmpeg + faster-whisper) | **Real**           |
-| Visual Capture (ffmpeg + Ollama VL)  | **Real**           |
-| Structured Extraction + Summary      | Fixture (issue #5) |
+| Stage                                | Status                 |
+| ------------------------------------ | ---------------------- |
+| Transcript (ffmpeg + faster-whisper) | **Real**               |
+| Visual Capture (ffmpeg + Ollama VL)  | **Real**               |
+| Structured Extraction + Summary      | **Real** (Ollama text) |
 
-`transcript.txt` / `transcript.json` are real; `extraction.json` is placeholder until #5.
+`transcript.txt`, `frames/`, `visual_content.json`, `extraction.json`, and `summary.md` are all produced by real adapters.
 
 ## macOS notes
 

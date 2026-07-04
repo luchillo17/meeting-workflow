@@ -12,7 +12,7 @@ from pathlib import Path
 from rich.console import Console
 
 from workflow.cuda_paths import ensure_cuda_dll_paths
-from workflow.fixtures import FixtureExtractor
+from workflow.extraction import OllamaStructuredExtractor
 from workflow.frames import FfmpegFrameExtractor, frames_bundle_valid, load_transcript_for_frames
 from workflow.preflight import Check, has_failures, run_preflight
 from workflow.runner import WorkflowRunner
@@ -137,7 +137,7 @@ def cmd_process(args: argparse.Namespace) -> int:
         transcriber,
         FfmpegFrameExtractor(config),
         OllamaVisionAnalyzer(config),
-        FixtureExtractor(),
+        OllamaStructuredExtractor(config),
     )
     try:
         runner.run(recording, force=args.force)

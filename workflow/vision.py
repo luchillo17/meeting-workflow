@@ -9,13 +9,18 @@ from collections.abc import Callable
 from pathlib import Path
 from urllib import request
 
+from workflow.output_language import language_display_name, resolve_output_language
 from workflow.utils import invalidate_downstream_artifacts, write_json
 
 _VISION_PROMPT = (
-    "Describe el contenido visual de esta imagen de una reunión. "
-    'Responde solo con JSON: {"type":"whiteboard|diagram|slide|other","description":"..."} '
-    "en español."
+    "Describe the visual content of this meeting image. "
+    'Respond with JSON only: {{"type":"whiteboard|diagram|slide|other","description":"..."}} '
+    "Write the description in {output_language}."
 )
+
+
+def build_vision_prompt(*, output_language: str = "es") -> str:
+    return _VISION_PROMPT.format(output_language=language_display_name(output_language))
 
 
 def format_timestamp(seconds: float) -> str:
@@ -60,6 +65,7 @@ class OllamaVisionAnalyzer:
         self._base_url = ollama_cfg.get("base_url", "http://localhost:11434").rstrip("/")
         self._model = ollama_cfg.get("vision_model", "qwen2.5vl:7b")
         self._timeout = int(ollama_cfg.get("timeout_seconds", 300))
+        self._output_language = resolve_output_language(config)
         self._chat = chat_fn or self._chat_http
 
     def analyze(self, frame_paths: list[Path], output_dir: Path) -> list[dict]:
@@ -89,7 +95,7 @@ class OllamaVisionAnalyzer:
             "messages": [
                 {
                     "role": "user",
-                    "content": _VISION_PROMPT,
+                    "content": build_vision_prompt(output_language=self._output_language),
                     "images": [encoded],
                 }
             ],
