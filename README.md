@@ -6,7 +6,7 @@ Runs on Windows with faster-whisper + Ollama. ~$0 API cost.
 
 ## Status
 
-**v1 in development.** Domain model and PRD are defined; implementation follows the [PRD issue](https://github.com/luchillo17/meeting-workflow/issues).
+**v1 in development.** Domain model and PRD are defined; implementation follows the [PRD issue](https://github.com/luchillo17/meeting-workflow/issues/1).
 
 ## Prerequisites
 
