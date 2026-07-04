@@ -45,6 +45,19 @@ def test_load_transcript_for_frames_missing_returns_empty(tmp_path: Path) -> Non
     assert transcript.text == ""
 
 
+def test_load_transcript_for_frames_invalid_json_returns_empty(tmp_path: Path) -> None:
+    from workflow.frames import load_transcript_for_frames
+
+    out = tmp_path / "extraction"
+    out.mkdir()
+    (out / "transcript.json").write_text("{not json", encoding="utf-8")
+
+    transcript = load_transcript_for_frames(out)
+
+    assert transcript.segments == []
+    assert transcript.text == ""
+
+
 def test_visual_cue_timestamps_finds_matching_segments() -> None:
     segments = [
         {"start": 0.0, "end": 5.0, "text": "Hola a todos."},
@@ -88,6 +101,36 @@ def test_merge_capture_timestamps_keeps_all_visual_cues_when_over_budget() -> No
 
     cue_times = [ts for ts, trigger in merged if trigger == "visual_cue"]
     assert cue_times == [100.0, 200.0, 300.0]
+
+
+def test_merge_capture_timestamps_caps_visual_cues_to_max_frames() -> None:
+    merged = merge_capture_timestamps(
+        duration=600.0,
+        scene_times=[],
+        interval_times=[],
+        visual_cue_times=[float(i * 10) for i in range(1, 11)],
+        max_frames=4,
+        min_spacing_seconds=0,
+        cluster_seconds=0,
+    )
+
+    assert len(merged) == 4
+    assert all(trigger == "visual_cue" for _, trigger in merged)
+
+
+def test_merge_capture_timestamps_keeps_nearby_visual_cues() -> None:
+    merged = merge_capture_timestamps(
+        duration=120.0,
+        scene_times=[],
+        interval_times=[],
+        visual_cue_times=[10.0, 11.5, 40.0],
+        max_frames=10,
+        min_spacing_seconds=0,
+        cluster_seconds=2.0,
+    )
+
+    cue_times = [ts for ts, trigger in merged if trigger == "visual_cue"]
+    assert cue_times == [10.0, 11.5, 40.0]
 
 
 def test_merge_capture_timestamps_keeps_scene_even_when_close_to_interval() -> None:

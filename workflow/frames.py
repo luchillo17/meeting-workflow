@@ -28,7 +28,10 @@ def load_transcript_for_frames(output_dir: Path) -> FrameTranscript:
     path = output_dir / "transcript.json"
     if not path.is_file():
         return FrameTranscript(segments=[], text="")
-    data = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return FrameTranscript(segments=[], text="")
     if not isinstance(data, dict):
         return FrameTranscript(segments=[], text="")
     segments = data.get("segments", [])
@@ -98,6 +101,17 @@ def gap_fill_interval_timestamps(
     return times
 
 
+def _subsample_evenly(items: list[tuple[float, str]], limit: int) -> list[tuple[float, str]]:
+    if len(items) <= limit:
+        return items
+    if limit <= 0:
+        return []
+    if limit == 1:
+        return [items[0]]
+    last = len(items) - 1
+    return [items[round(index * last / (limit - 1))] for index in range(limit)]
+
+
 def merge_capture_timestamps(
     *,
     duration: float,
@@ -125,6 +139,9 @@ def merge_capture_timestamps(
     for ts, trigger in candidates:
         if clustered and ts - clustered[-1][0] < cluster_seconds:
             prev_ts, prev_trigger = clustered[-1]
+            if trigger == "visual_cue" and prev_trigger == "visual_cue":
+                clustered.append((ts, trigger))
+                continue
             if _TRIGGER_PRIORITY[trigger] > _TRIGGER_PRIORITY[prev_trigger]:
                 clustered[-1] = (min(prev_ts, ts), trigger)
             continue
@@ -134,6 +151,9 @@ def merge_capture_timestamps(
     for ts, trigger in clustered:
         if trigger in ("scene", "visual_cue"):
             if spaced and ts - spaced[-1][0] < cluster_seconds:
+                if trigger == "visual_cue" and spaced[-1][1] == "visual_cue":
+                    spaced.append((ts, trigger))
+                    continue
                 if _TRIGGER_PRIORITY[trigger] > _TRIGGER_PRIORITY[spaced[-1][1]]:
                     spaced[-1] = (min(spaced[-1][0], ts), trigger)
                 continue
@@ -153,7 +173,7 @@ def merge_capture_timestamps(
     cues = [item for item in spaced if item[1] == "visual_cue"]
     others = [item for item in spaced if item[1] != "visual_cue"]
     if len(cues) >= max_frames:
-        return cues
+        return _subsample_evenly(cues, max_frames)
 
     budget = max_frames - len(cues)
     return sorted(cues + others[:budget])
