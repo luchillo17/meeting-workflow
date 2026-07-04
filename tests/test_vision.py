@@ -8,11 +8,16 @@ from pathlib import Path
 
 import pytest
 
-from workflow.vision import OllamaVisionAnalyzer, format_timestamp
+from workflow.vision import OllamaVisionAnalyzer, build_vision_prompt, format_timestamp
 
 
 def test_format_timestamp() -> None:
     assert format_timestamp(3661.5) == "01:01:01"
+
+
+def test_build_vision_prompt_uses_output_language() -> None:
+    prompt = build_vision_prompt(output_language="es")
+    assert "Write the description in Spanish" in prompt
 
 
 def test_analyze_writes_visual_content_json(tmp_path: Path) -> None:
@@ -42,7 +47,8 @@ def test_analyze_writes_visual_content_json(tmp_path: Path) -> None:
                 "base_url": "http://localhost:11434",
                 "vision_model": "qwen2.5vl:7b",
                 "timeout_seconds": 30,
-            }
+            },
+            "output": {"language": "es"},
         },
         chat_fn=fake_chat,
     )
