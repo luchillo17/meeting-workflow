@@ -6,8 +6,10 @@ import gc
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from workflow.cuda_paths import ensure_cuda_dll_paths
+from workflow.transcript_filters import filter_hallucination_segments, join_segment_texts
 from workflow.utils import run_cmd, write_json
 
 
@@ -15,6 +17,35 @@ from workflow.utils import run_cmd, write_json
 class WhisperTranscript:
     segments: list[dict]
     text: str
+
+
+def build_whisper_transcribe_options(config: dict) -> dict[str, Any]:
+    """Map config.yaml whisper section to faster-whisper transcribe() kwargs."""
+    whisper_cfg = config.get("whisper", {})
+    options: dict[str, Any] = {
+        "language": whisper_cfg.get("language", "es"),
+        "vad_filter": whisper_cfg.get("vad_filter", True),
+        "condition_on_previous_text": whisper_cfg.get("condition_on_previous_text", False),
+    }
+
+    if vad_parameters := whisper_cfg.get("vad_parameters"):
+        options["vad_parameters"] = vad_parameters
+
+    optional_floats = (
+        "hallucination_silence_threshold",
+        "no_speech_threshold",
+        "compression_ratio_threshold",
+        "log_prob_threshold",
+        "temperature",
+    )
+    for key in optional_floats:
+        if key in whisper_cfg:
+            options[key] = whisper_cfg[key]
+
+    if options.get("hallucination_silence_threshold") is not None:
+        options["word_timestamps"] = True
+
+    return options
 
 
 class WhisperTranscriber:
@@ -26,10 +57,13 @@ class WhisperTranscriber:
         model_factory: Callable[..., object] | None = None,
     ) -> None:
         whisper_cfg = config.get("whisper", {})
+        self._config = config
         self._model_name = whisper_cfg.get("model", "large-v3")
         self._device = whisper_cfg.get("device", "cuda")
         self._compute_type = whisper_cfg.get("compute_type", "float16")
         self._language = whisper_cfg.get("language", "es")
+        self._filter_hallucinations = whisper_cfg.get("filter_hallucination_phrases", True)
+        self._transcribe_options = build_whisper_transcribe_options(config)
         self._run_cmd = run_cmd_fn
         self._model_factory = model_factory
         self._model: object | None = None
@@ -96,14 +130,18 @@ class WhisperTranscriber:
 
     def _run_whisper(self, audio_path: Path) -> tuple[list[dict], str]:
         model = self._get_model()
-        raw_segments, _info = model.transcribe(str(audio_path), language=self._language)
+        raw_segments, _info = model.transcribe(str(audio_path), **self._transcribe_options)
         segments: list[dict] = []
-        texts: list[str] = []
         for segment in raw_segments:
             text = segment.text.strip()
+            if not text:
+                continue
             segments.append({"start": segment.start, "end": segment.end, "text": text})
-            texts.append(text)
-        return segments, " ".join(texts)
+
+        if self._filter_hallucinations:
+            segments = filter_hallucination_segments(segments, language=self._language)
+
+        return segments, join_segment_texts(segments)
 
     def _unload_model(self) -> None:
         if self._model is not None:

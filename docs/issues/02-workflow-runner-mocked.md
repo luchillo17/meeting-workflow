@@ -10,11 +10,11 @@ Load configuration from `.env` + `config.yaml`. Support `RECORDING_PATH` and `pr
 
 ## Acceptance criteria
 
-- [ ] `python run.py process --file <path>` runs a Workflow Run and writes a complete Extraction directory
-- [ ] Re-run without `--force` skips when `extraction.json` exists (exit 0, message logged)
-- [ ] `--force` reprocesses and overwrites the Extraction
-- [ ] WorkflowRunner accepts injected adapter fakes; tests pass without GPU/network
-- [ ] `pytest` runs in CI-local fashion (add pytest to requirements)
+- [x] `python run.py process --file <path>` runs a Workflow Run and writes a complete Extraction directory
+- [x] Re-run without `--force` skips when `extraction.json` exists (exit 0, message logged)
+- [x] `--force` reprocesses and overwrites the Extraction
+- [x] WorkflowRunner accepts injected adapter fakes; tests pass without GPU/network
+- [x] `pytest` runs in CI-local fashion (add pytest to requirements)
 
 ## Blocked by
 

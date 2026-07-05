@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from workflow.transcriber import WhisperTranscriber
+from workflow.transcriber import WhisperTranscriber, build_whisper_transcribe_options
 
 
 class FakeSegment:
@@ -19,7 +19,7 @@ class FakeSegment:
 
 
 class FakeWhisperModel:
-    def transcribe(self, audio_path: str, language: str | None = None):
+    def transcribe(self, audio_path: str, **kwargs):
         segments = [
             FakeSegment(0.0, 2.5, "Hola, revisemos el tablero."),
             FakeSegment(2.5, 5.0, "Tenemos tres bloques en el diagrama."),
@@ -116,3 +116,72 @@ def test_whisper_model_unloaded_after_transcription(tmp_path: Path) -> None:
 
     assert transcriber._model is None
     assert len(created_models) == 1
+
+
+def test_build_whisper_transcribe_options_defaults() -> None:
+    options = build_whisper_transcribe_options({"whisper": {"language": "es"}})
+    assert options["language"] == "es"
+    assert options["vad_filter"] is True
+    assert options["condition_on_previous_text"] is False
+
+
+def test_build_whisper_transcribe_options_enables_word_timestamps_for_hallucination_threshold() -> (
+    None
+):
+    options = build_whisper_transcribe_options(
+        {"whisper": {"hallucination_silence_threshold": 2.0}}
+    )
+    assert options["word_timestamps"] is True
+    assert options["hallucination_silence_threshold"] == 2.0
+
+
+def test_transcribe_filters_hallucination_phrases(tmp_path: Path) -> None:
+    recording = tmp_path / "meeting.mp4"
+    recording.write_bytes(b"fake-video")
+    output_dir = tmp_path / "out"
+
+    class NoisyModel(FakeWhisperModel):
+        def transcribe(self, audio_path: str, **kwargs):
+            segments = [
+                FakeSegment(0.0, 1.0, "Gracias."),
+                FakeSegment(30.0, 31.0, "Gracias."),
+                FakeSegment(60.0, 65.0, "Hablamos del alcance del MVP."),
+            ]
+            return segments, object()
+
+    result = _transcriber(model_factory=lambda *_a, **_k: NoisyModel()).transcribe(
+        recording, output_dir
+    )
+
+    assert result.text == "Hablamos del alcance del MVP."
+    assert len(result.segments) == 1
+
+
+def test_transcribe_passes_vad_options_to_model(tmp_path: Path) -> None:
+    recording = tmp_path / "meeting.mp4"
+    recording.write_bytes(b"fake-video")
+    captured: dict = {}
+
+    class CapturingModel(FakeWhisperModel):
+        def transcribe(self, audio_path: str, **kwargs):
+            captured.update(kwargs)
+            return super().transcribe(audio_path, **kwargs)
+
+    WhisperTranscriber(
+        {
+            "whisper": {
+                "model": "tiny",
+                "device": "cpu",
+                "compute_type": "int8",
+                "language": "es",
+                "vad_filter": True,
+                "hallucination_silence_threshold": 2.0,
+            }
+        },
+        run_cmd_fn=_fake_run_cmd,
+        model_factory=lambda *_a, **_k: CapturingModel(),
+    ).transcribe(recording, tmp_path / "out")
+
+    assert captured["vad_filter"] is True
+    assert captured["hallucination_silence_threshold"] == 2.0
+    assert captured["word_timestamps"] is True

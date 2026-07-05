@@ -6,7 +6,19 @@ Runs locally with faster-whisper + Ollama. ~$0 API cost. **Windows, Linux, and m
 
 ## Status
 
-**v1 in development** — Transcript, Visual Capture, and Structured Extraction are real ([#5](https://github.com/luchillo17/meeting-workflow/issues/5) complete; GPU pilot tuning in [#6](https://github.com/luchillo17/meeting-workflow/issues/6)).
+**v1 feature-complete** — full pipeline on `main` (Transcript, Visual Capture, Structured Extraction, Summary). Whisper anti-hallucination in [PR #10](https://github.com/luchillo17/meeting-workflow/pull/10). Track pilot sign-off in [#6](https://github.com/luchillo17/meeting-workflow/issues/6).
+
+## Pilot
+
+After [SETUP.md](docs/SETUP.md) and `uv run meeting-workflow check`:
+
+```bash
+# .env: RECORDING_PATH, OUTPUT_DIR
+uv run meeting-workflow setup --pull-models
+uv run meeting-workflow process --force
+```
+
+Outputs land in `OUTPUT_DIR/<slug>/`. Re-run without `--force` skips when `extraction.json` exists. See [docs/issues/](docs/issues/) for acceptance criteria and known gaps.
 
 ## Quick start
 
@@ -69,6 +81,8 @@ uv run pre-commit run --all-files  # format entire repo
 
 - [docs/SETUP.md](docs/SETUP.md) — install (all platforms)
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — common errors
+- [docs/issues/](docs/issues/) — v1 implementation checklist
+- [docs/PRD.md](docs/PRD.md) — product requirements
 - [CONTEXT.md](CONTEXT.md) — ubiquitous language
 - [docs/adr/](docs/adr/) — architectural decisions
 
