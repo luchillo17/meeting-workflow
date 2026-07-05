@@ -90,3 +90,4 @@ Teams Meeting Recordings capture spoken decisions, action items, and on-screen w
 - Pilot with any available Teams `.mp4` via `RECORDING_PATH`. See README **Pilot** section.
 - **v1 delivery (2026-07):** Issues #2–#5 and PR #10 shipped on `main`. GPU pilot sign-off tracked in `docs/issues/06-gpu-pilot.md` ([#6](https://github.com/luchillo17/meeting-workflow/issues/6)). Epic [#1](https://github.com/luchillo17/meeting-workflow/issues/1) closes with #6.
 - Deferred post-pilot: folder scan, manifest dedup, Task Scheduler, optional UI, extraction fidelity hardening.
+- Future inspiration (knowledge delivery → Cursor, second brain, RAG): [inspiration/knowledge-delivery.md](inspiration/knowledge-delivery.md).
