@@ -7,13 +7,15 @@ import json
 import re
 from collections.abc import Callable
 from pathlib import Path
-from urllib import request
 
+from workflow.ollama_client import OllamaClient, resolve_ollama_settings
 from workflow.output_language import language_display_name, resolve_output_language
 from workflow.utils import invalidate_downstream_artifacts, write_json
 
 _VISION_PROMPT = (
     "Describe the visual content of this meeting image. "
+    "Ignore meeting notetaker bots and UI chrome (e.g. read.ai, Otter, Fireflies labels) — "
+    "describe only human-shared content when present. "
     'Respond with JSON only: {{"type":"whiteboard|diagram|slide|other","description":"..."}} '
     "Write the description in {output_language}."
 )
@@ -59,31 +61,39 @@ class OllamaVisionAnalyzer:
         self,
         config: dict,
         *,
-        chat_fn: Callable[[str, dict], dict] | None = None,
+        chat_fn: Callable[[dict], dict] | None = None,
+        unload_fn: Callable[[str], None] | None = None,
     ) -> None:
         ollama_cfg = config.get("ollama", {})
-        self._base_url = ollama_cfg.get("base_url", "http://localhost:11434").rstrip("/")
+        self._settings = resolve_ollama_settings(config)
+        self._client = OllamaClient(self._settings)
         self._model = ollama_cfg.get("vision_model", "qwen2.5vl:7b")
-        self._timeout = int(ollama_cfg.get("timeout_seconds", 300))
         self._output_language = resolve_output_language(config)
-        self._chat = chat_fn or self._chat_http
+        self._chat_fn = chat_fn
+        self._unload = unload_fn or self._client.unload
 
     def analyze(self, frame_paths: list[Path], output_dir: Path) -> list[dict]:
         invalidate_downstream_artifacts(output_dir)
         timestamps = self._load_timestamps(output_dir)
         visual: list[dict] = []
-        for frame_path in frame_paths:
-            if not frame_path.is_file():
-                continue
-            frame_type, description = self._describe_frame(frame_path)
-            seconds = timestamps.get(str(frame_path), timestamps.get(frame_path.as_posix(), 0.0))
-            visual.append(
-                {
-                    "timestamp": format_timestamp(seconds),
-                    "type": frame_type,
-                    "description": description,
-                }
-            )
+        try:
+            for frame_path in frame_paths:
+                if not frame_path.is_file():
+                    continue
+                frame_type, description = self._describe_frame(frame_path)
+                seconds = timestamps.get(
+                    str(frame_path), timestamps.get(frame_path.as_posix(), 0.0)
+                )
+                visual.append(
+                    {
+                        "timestamp": format_timestamp(seconds),
+                        "type": frame_type,
+                        "description": description,
+                    }
+                )
+        finally:
+            if self._settings.unload_between_stages:
+                self._unload(self._model)
         write_json(output_dir / "visual_content.json", visual)
         return visual
 
@@ -100,27 +110,13 @@ class OllamaVisionAnalyzer:
                 }
             ],
         }
-        response = self._chat(f"{self._base_url}/api/chat", payload)
+        response = (
+            self._chat_fn(payload) if self._chat_fn is not None else self._client.chat(payload)
+        )
         content = response.get("message", {}).get("content", "")
         if not content:
             raise RuntimeError(f"Empty vision response for {frame_path.name}")
         return _parse_vision_response(content)
-
-    def _chat_http(self, url: str, payload: dict) -> dict:
-        body = json.dumps(payload).encode("utf-8")
-        req = request.Request(
-            url,
-            data=body,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with request.urlopen(req, timeout=self._timeout) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except OSError as exc:
-            raise RuntimeError(
-                f"Ollama vision request failed at {self._base_url}. Is Ollama running?"
-            ) from exc
 
     @staticmethod
     def _load_timestamps(output_dir: Path) -> dict[str, float]:

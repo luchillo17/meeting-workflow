@@ -31,7 +31,7 @@ def test_analyze_writes_visual_content_json(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    def fake_chat(_url: str, payload: dict) -> dict:
+    def fake_chat(payload: dict) -> dict:
         assert payload["model"] == "qwen2.5vl:7b"
         images = payload["messages"][0]["images"]
         assert base64.b64encode(b"jpeg-data").decode() == images[0]
@@ -64,6 +64,28 @@ def test_analyze_writes_visual_content_json(tmp_path: Path) -> None:
     ]
     saved = json.loads((tmp_path / "visual_content.json").read_text(encoding="utf-8"))
     assert saved == result
+
+
+def test_analyze_unloads_vision_model_when_configured(tmp_path: Path) -> None:
+    frames_dir = tmp_path / "frames"
+    frames_dir.mkdir()
+    frame = frames_dir / "frame_0001.jpg"
+    frame.write_bytes(b"jpeg-data")
+    (tmp_path / "frames.json").write_text(
+        json.dumps([{"timestamp": 1.0, "path": str(frame), "trigger": "scene"}]),
+        encoding="utf-8",
+    )
+    unloaded: list[str] = []
+
+    analyzer = OllamaVisionAnalyzer(
+        {"ollama": {"vision_model": "qwen2.5vl:7b", "unload_between_stages": True}},
+        chat_fn=lambda _payload: {"message": {"content": '{"type":"other","description":"ok"}'}},
+        unload_fn=unloaded.append,
+    )
+
+    analyzer.analyze([frame], tmp_path)
+
+    assert unloaded == ["qwen2.5vl:7b"]
 
 
 def test_analyze_skips_missing_frame_files(tmp_path: Path) -> None:

@@ -87,7 +87,7 @@ def test_normalize_extraction_coerces_scalar_llm_fields() -> None:
 def test_ollama_extractor_writes_extraction_and_summary(tmp_path: Path) -> None:
     transcript = type("T", (), {"text": "Definimos el roadmap.", "segments": []})()
 
-    def fake_chat(_url: str, payload: dict) -> dict:
+    def fake_chat(payload: dict) -> dict:
         assert payload["model"] == "qwen2.5:7b"
         return {
             "message": {
@@ -144,7 +144,7 @@ def test_ollama_extractor_requests_json_schema_format(tmp_path: Path) -> None:
     transcript = type("T", (), {"text": "hola", "segments": []})()
     captured: dict = {}
 
-    def fake_chat(_url: str, payload: dict) -> dict:
+    def fake_chat(payload: dict) -> dict:
         captured.update(payload)
         return {
             "message": {
@@ -206,7 +206,7 @@ def test_runner_integration_with_ollama_extractor(tmp_path: Path) -> None:
             write_json(output_dir / "visual_content.json", visual)
             return visual
 
-    def fake_chat(_url: str, payload: dict) -> dict:
+    def fake_chat(payload: dict) -> dict:
         return {
             "message": {
                 "content": json.dumps(

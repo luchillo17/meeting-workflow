@@ -2,9 +2,14 @@
 
 ollama:
   base_url: "http://localhost:11434"
-  text_model: "qwen2.5:7b" # use qwen2.5:14b for higher quality
+  text_model: "qwen2.5:14b" # quality preset; use qwen2.5:7b for faster runs
   vision_model: "qwen2.5vl:7b"
-  timeout_seconds: 300
+  timeout_seconds: 600
+  keep_alive: "10m" # keep vision model loaded across frames in a stage
+  unload_between_stages: true # free VRAM before loading the next Ollama model
+
+extraction:
+  max_transcript_chars: 48000 # 0 = no limit; raise if long meetings lose tail context
 
 whisper:
   model: "large-v3" # use "medium" for faster pilot runs
