@@ -7,8 +7,8 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from urllib import request
 
+from workflow.ollama_client import OllamaClient, resolve_ollama_settings
 from workflow.output_language import (
     default_meeting_topic,
     language_display_name,
@@ -44,6 +44,8 @@ Fidelity rules (mandatory):
   omit it or add it to open_questions.
 - Do not split or multiply a group-level figure across individuals unless the
   transcript gives that breakdown.
+- Ignore meeting notetaker bots and UI labels (e.g. read.ai) as participants.
+  Only include people explicitly named in speech.
 
 Use empty lists when a section has no information.
 Return only the JSON object, no markdown or extra text.
@@ -57,7 +59,7 @@ Visual captures:
 
 _SYSTEM_PROMPT = (
     "You summarize meetings. Respond with valid JSON only. "
-    "Write all string values in {output_language}. "
+    "Write ALL string values in {output_language} only — never use another language. "
     "Ground every fact in the transcript; do not invent or re-label numbers."
 )
 
@@ -104,10 +106,11 @@ def build_extraction_prompt(
     visual_content: list[dict],
     *,
     output_language: str = "es",
+    max_transcript_chars: int = _MAX_TRANSCRIPT_CHARS,
 ) -> str:
     text = transcript_text.strip()
-    if len(text) > _MAX_TRANSCRIPT_CHARS:
-        text = text[:_MAX_TRANSCRIPT_CHARS] + "\n[... transcript truncated ...]"
+    if max_transcript_chars > 0 and len(text) > max_transcript_chars:
+        text = text[:max_transcript_chars] + "\n[... transcript truncated ...]"
     visual_lines = []
     for entry in visual_content:
         ts = entry.get("timestamp", "")
@@ -242,14 +245,20 @@ class OllamaStructuredExtractor:
         self,
         config: dict,
         *,
-        chat_fn: Callable[[str, dict], dict] | None = None,
+        chat_fn: Callable[[dict], dict] | None = None,
+        unload_fn: Callable[[str], None] | None = None,
     ) -> None:
         ollama_cfg = config.get("ollama", {})
-        self._base_url = ollama_cfg.get("base_url", "http://localhost:11434").rstrip("/")
+        extraction_cfg = config.get("extraction", {})
+        self._settings = resolve_ollama_settings(config)
+        self._client = OllamaClient(self._settings)
         self._model = ollama_cfg.get("text_model", "qwen2.5:7b")
-        self._timeout = int(ollama_cfg.get("timeout_seconds", 300))
+        self._max_transcript_chars = int(
+            extraction_cfg.get("max_transcript_chars", _MAX_TRANSCRIPT_CHARS)
+        )
         self._output_language = resolve_output_language(config)
-        self._chat = chat_fn or self._chat_http
+        self._chat_fn = chat_fn
+        self._unload = unload_fn or self._client.unload
 
     def build_extraction(
         self,
@@ -260,7 +269,10 @@ class OllamaStructuredExtractor:
     ) -> dict:
         text = str(getattr(transcript, "text", ""))
         prompt = build_extraction_prompt(
-            text, visual_content, output_language=self._output_language
+            text,
+            visual_content,
+            output_language=self._output_language,
+            max_transcript_chars=self._max_transcript_chars,
         )
         payload = {
             "model": self._model,
@@ -276,33 +288,24 @@ class OllamaStructuredExtractor:
                 {"role": "user", "content": prompt},
             ],
         }
-        response = self._chat(f"{self._base_url}/api/chat", payload)
-        content = response.get("message", {}).get("content", "")
-        if not content:
-            raise RuntimeError("Empty extraction response from Ollama")
-        raw = _parse_json_object(content)
-        extraction = normalize_extraction(
-            raw,
-            meeting_date=parse_meeting_date(recording_name),
-            visual_content=visual_content,
-            output_language=self._output_language,
-        )
-        write_json(output_dir / "extraction.json", extraction)
-        (output_dir / "summary.md").write_text(render_summary(extraction), encoding="utf-8")
-        return extraction
-
-    def _chat_http(self, url: str, payload: dict) -> dict:
-        body = json.dumps(payload).encode("utf-8")
-        req = request.Request(
-            url,
-            data=body,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
         try:
-            with request.urlopen(req, timeout=self._timeout) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except OSError as exc:
-            raise RuntimeError(
-                f"Ollama extraction request failed at {self._base_url}. Is Ollama running?"
-            ) from exc
+            if self._chat_fn is not None:
+                response = self._chat_fn(payload)
+            else:
+                response = self._client.chat(payload, keep_alive=0)
+            content = response.get("message", {}).get("content", "")
+            if not content:
+                raise RuntimeError("Empty extraction response from Ollama")
+            raw = _parse_json_object(content)
+            extraction = normalize_extraction(
+                raw,
+                meeting_date=parse_meeting_date(recording_name),
+                visual_content=visual_content,
+                output_language=self._output_language,
+            )
+            write_json(output_dir / "extraction.json", extraction)
+            (output_dir / "summary.md").write_text(render_summary(extraction), encoding="utf-8")
+            return extraction
+        finally:
+            if self._settings.unload_between_stages:
+                self._unload(self._model)
