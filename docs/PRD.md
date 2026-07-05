@@ -54,10 +54,10 @@ Teams Meeting Recordings capture spoken decisions, action items, and on-screen w
 - **Idempotency:** Filesystem-based. If `extraction.json` exists in the Extraction output directory and `--force` is not set, exit successfully without reprocessing.
 - **Output slug:** Derived from recording filename via slugify helper; output written to `OUTPUT_DIR/<slug>/`.
 - **Stages (sequential):** audio extract → transcribe → frame select → vision describe → structured extract + summary render. Unload whisper before vision; one model in VRAM at a time.
-- **Transcription:** faster-whisper `large-v3`, CUDA, Spanish, configured via yaml.
+- **Transcription:** faster-whisper `large-v3`, CUDA, Spanish, configured via yaml. Silero VAD, decoding thresholds, and optional post-filter for known silence hallucinations (see `config.yaml` `whisper.*`).
 - **Visual Capture:** ffmpeg scene detection + interval fallback + transcript keyword boost; max frames, resize, optional perceptual-hash dedup — all configured via yaml.
-- **Vision:** Ollama Qwen2.5-VL HTTP API, Spanish prompt for diagram/whiteboard description.
-- **Structured Extraction:** Ollama Qwen2.5 text model; JSON schema with meeting_date, topic, key_decisions, action_items, blockers_risks, status_updates, technical_details, open_questions, next_steps, visual_content.
+- **Vision:** Ollama Qwen2.5-VL HTTP API; English prompt templates; output text in `output.language` (default `whisper.language`).
+- **Structured Extraction:** Ollama Qwen2.5 text model; JSON schema with meeting_date, topic, key_decisions, action_items, blockers_risks, status_updates, technical_details, open_questions, next_steps, visual_content. English prompts; string values in `output.language`.
 - **Summary:** Markdown rendered from Structured Extraction JSON.
 - **Config split:** `.env` for paths and Ollama URL/models; `config.yaml` for whisper, frame, and cue settings.
 - **Domain docs:** CONTEXT.md glossary + ADRs for local-first GPU, hybrid vision v1, filesystem idempotency.
@@ -87,5 +87,6 @@ Teams Meeting Recordings capture spoken decisions, action items, and on-screen w
 
 ## Further Notes
 
-- Pilot with any available Teams `.mp4` via `RECORDING_PATH`.
-- Deferred post-pilot: folder scan, manifest dedup, Task Scheduler, optional UI.
+- Pilot with any available Teams `.mp4` via `RECORDING_PATH`. See README **Pilot** section.
+- **v1 delivery (2026-07):** Issues #2–#5 and PR #10 shipped on `main`. GPU pilot sign-off tracked in `docs/issues/06-gpu-pilot.md` ([#6](https://github.com/luchillo17/meeting-workflow/issues/6)). Epic [#1](https://github.com/luchillo17/meeting-workflow/issues/1) closes with #6.
+- Deferred post-pilot: folder scan, manifest dedup, Task Scheduler, optional UI, extraction fidelity hardening.
