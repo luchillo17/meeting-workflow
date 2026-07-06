@@ -1,6 +1,6 @@
 # Implementation issues (v1)
 
-Tracked breakdown of [PRD](../PRD.md) delivery. GitHub issues mirror these; this folder is the source of acceptance criteria.
+[PRD](../PRD.md) delivery breakdown. GitHub issues mirror these; this folder = acceptance criteria source.
 
 | Doc                                                                  | GitHub                                                        | Status | PR  |
 | -------------------------------------------------------------------- | ------------------------------------------------------------- | ------ | --- |
@@ -11,6 +11,6 @@ Tracked breakdown of [PRD](../PRD.md) delivery. GitHub issues mirror these; this
 | [07-whisper-anti-hallucination.md](07-whisper-anti-hallucination.md) | —                                                             | Done   | #10 |
 | [06-gpu-pilot.md](06-gpu-pilot.md)                                   | [#6](https://github.com/luchillo17/meeting-workflow/issues/6) | Done   | —   |
 
-Epic [#1 PRD v1](https://github.com/luchillo17/meeting-workflow/issues/1) — **closed** (v1 delivered).
+Epic [#1](https://github.com/luchillo17/meeting-workflow/issues/1) **closed** — v1 delivered.
 
-Post-v1 work (folder scan, batch queue, UI) stays in PRD **Out of Scope** / **Further Notes**.
+Post-v1 (folder scan, batch, UI): PRD **Out of Scope** / **Notes**.

@@ -1,1 +1,1 @@
-"""Meeting Workflow — process Teams Meeting Recordings into Extractions."""
+"""Meeting Workflow — process meeting recordings into Extractions."""

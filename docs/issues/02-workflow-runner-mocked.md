@@ -2,20 +2,22 @@
 
 #1
 
-## What to build
+## Build
 
-Establish the **WorkflowRunner** seam and thin CLI for a full **Workflow Run** on one **Meeting Recording**, using injectable adapters (all mocked in tests). A run produces a complete **Extraction** bundle (`transcript.json`, `transcript.txt`, `visual_content.json`, `extraction.json`, `summary.md`) under `OUTPUT_DIR/<slug>/` from fixture data — no GPU, ffmpeg, or Ollama required in CI.
+**WorkflowRunner** seam + thin CLI. Full **Workflow Run** on one **Meeting Recording**. Injectable adapters (mocked in tests). Complete **Extraction** from fixture data — no GPU, ffmpeg, Ollama in tests.
 
-Load configuration from `.env` + `config.yaml`. Support `RECORDING_PATH` and `process --file`. Skip when `extraction.json` exists unless `--force`. Add pytest and tests at the WorkflowRunner boundary.
+Output: `transcript.json`, `transcript.txt`, `visual_content.json`, `extraction.json`, `summary.md` under `OUTPUT_DIR/<slug>/`.
 
-## Acceptance criteria
+Config: `.env` + `config.yaml`. `RECORDING_PATH`, `process --file`. Skip if `extraction.json` exists unless `--force`. pytest at WorkflowRunner boundary.
 
-- [x] `python run.py process --file <path>` runs a Workflow Run and writes a complete Extraction directory
-- [x] Re-run without `--force` skips when `extraction.json` exists (exit 0, message logged)
-- [x] `--force` reprocesses and overwrites the Extraction
-- [x] WorkflowRunner accepts injected adapter fakes; tests pass without GPU/network
-- [x] `pytest` runs in CI-local fashion (add pytest to requirements)
+## Acceptance
+
+- [x] `python run.py process --file <path>` writes complete Extraction
+- [x] Re-run without `--force` skips when `extraction.json` exists (exit 0, logged)
+- [x] `--force` overwrites Extraction
+- [x] WorkflowRunner accepts injected fakes; tests pass without GPU/network
+- [x] pytest in dev deps
 
 ## Blocked by
 
-None — can start immediately
+None

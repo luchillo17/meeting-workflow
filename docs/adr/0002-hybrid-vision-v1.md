@@ -1,3 +1,3 @@
 # Hybrid vision in v1, not transcript-only
 
-v1 ships the full stage chain: Transcript plus Visual Capture plus Structured Extraction. Meetings include whiteboards and screen-shared diagrams that speech alone does not capture. Targeted frame extraction (scene detection plus Spanish transcript visual cues) keeps vision cost bounded compared to analyzing every frame.
+v1 ships full chain: Transcript + Visual Capture + Structured Extraction. Meetings have whiteboards, screen-shared diagrams speech alone misses. Targeted frames (scene detection + Spanish visual-cue keywords) bound vision cost vs every-frame analysis.

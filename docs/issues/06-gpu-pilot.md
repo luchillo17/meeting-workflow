@@ -2,23 +2,23 @@
 
 #1
 
-## What to build
+## Build
 
-Manual **GPU pilot** on a real Teams Meeting Recording. Verify rich CLI progress output, document pilot steps in README, and confirm skip/`--force` on real hardware. Out of automated CI.
+Manual **GPU pilot** on real meeting recording. Verify CLI progress, document pilot in README, confirm skip/`--force` on real hardware. Not in automated CI.
 
-## Acceptance criteria
+## Acceptance
 
-- [x] One real `.mp4` processed end-to-end on Windows + CUDA (Vital Link pilot, 2026-07-04)
-- [x] Spanish transcript quality is acceptable (after #10 VAD + phrase filter; 0 silence hallucinations on pilot)
-- [x] Visual Capture runs when screen content is present (Teams participant tiles / layout changes)
-- [x] Re-run skips; `--force` regenerates Extraction
-- [x] README documents pilot command and prerequisites
+- [x] Real `.mp4` end-to-end Windows + CUDA (Vital Link pilot, 2026-07-04)
+- [x] Spanish transcript acceptable (#10 VAD + phrase filter; 0 silence hallucinations on pilot)
+- [x] Visual Capture when screen content present
+- [x] Re-run skips; `--force` regenerates
+- [x] README documents pilot + prerequisites
 
-## Known pilot gaps (not blocking v1)
+## Pilot gaps (not blocking v1)
 
-- Structured Extraction can still mis-state figures or treat UI labels (e.g. read.ai) as people — prompt/quality follow-up.
-- CLI shows stage names only; no per-stage progress bars (PRD story #34 partial).
+- Structured Extraction may mis-state figures or treat UI labels (read.ai) as people — prompt follow-up
+- CLI: stage names only; no per-stage progress bars (PRD #34 partial)
 
 ## Blocked by
 
-#5 (Structured Extraction with real Ollama) — done. #10 (Whisper anti-hallucination) — done.
+#5 done. #10 done.

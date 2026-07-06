@@ -2,32 +2,32 @@
 
 ## `meeting-workflow check`
 
-Run before a long Workflow Run:
+Run before long Workflow Run:
 
 ```bash
 uv run meeting-workflow check
 ```
 
-Fix any **FAIL** lines first. **WARN** lines may be OK depending on what you are testing (e.g. Ollama models not needed for Transcript-only runs).
+Fix **FAIL** first. **WARN** may be OK (e.g. Ollama models not needed for Transcript-only).
 
 ## Common errors
 
 ### `Library cublas64_12.dll is not found` (Windows)
 
-CUDA libraries are bundled in Python deps. Fix:
+CUDA libs bundled in Python deps:
 
 ```bash
 uv sync
 uv run meeting-workflow check
 ```
 
-Use `uv run meeting-workflow process`, not an old virtualenv from before the repo rename.
+Use `uv run meeting-workflow process`, not old venv from before repo rename.
 
 ### Stale venv / `meeting-pipeline\.venv` in errors
 
-The project was renamed from `meeting-pipeline`. The fix is to **delete** `.venv` and recreate — do not rename it to `.venv.broken` or similar.
+Repo renamed from `meeting-pipeline`. **Delete** `.venv`, recreate — do not rename to `.venv.broken`.
 
-**Windows:** fully quit Cursor first (File → Exit), then in an external terminal:
+**Windows:** quit Cursor (File → Exit), external terminal:
 
 ```powershell
 Remove-Item -Recurse -Force .venv
@@ -41,13 +41,13 @@ rm -rf .venv
 uv sync
 ```
 
-Cursor locks files under the workspace; deleting `.venv` from inside the IDE often fails with “Access denied”.
+Cursor locks workspace files; delete `.venv` inside IDE often fails ("Access denied").
 
-`scripts/install.py` detects a broken venv after `uv sync` and prints these steps.
+`scripts/install.py` detects broken venv after `uv sync` and prints these steps.
 
 ### `ffmpeg` not found
 
-Install ffmpeg and ensure it is on your `PATH`. Verify with:
+Install ffmpeg, add to `PATH`:
 
 ```bash
 ffmpeg -version
@@ -55,7 +55,7 @@ ffmpeg -version
 
 ### Hugging Face symlink warning (Windows)
 
-Harmless. To silence:
+Harmless. Silence:
 
 ```env
 HF_HUB_DISABLE_SYMLINKS_WARNING=1
@@ -65,26 +65,26 @@ Or enable Windows Developer Mode.
 
 ### `Skipping - Extraction already exists`
 
-Idempotency is working. Re-run with:
+Idempotency works. Re-run:
 
 ```bash
 uv run meeting-workflow process --force
 ```
 
-### `extraction.json` looks wrong or empty
+### `extraction.json` wrong or empty
 
-Re-run with `--force` after checking Ollama is running and the text model is pulled:
+Check Ollama running + text model pulled:
 
 ```bash
 uv run meeting-workflow setup --pull-models
 uv run meeting-workflow process --force
 ```
 
-If the transcript is very long, the model only sees the first ~24k characters.
+Very long transcript: model sees first ~24k characters only.
 
-### `transcript.txt` starts with many repeated "Gracias." (or similar)
+### `transcript.txt` repeated "Gracias." (or similar)
 
-Whisper often hallucinates short polite phrases on silence (Teams waiting room, muted intro). Enable anti-hallucination settings in `config.yaml`:
+Whisper hallucinates on silence (waiting room, muted intro, long pauses). `config.yaml`:
 
 ```yaml
 whisper:
@@ -94,7 +94,7 @@ whisper:
   filter_hallucination_phrases: true
 ```
 
-Then re-transcribe:
+Re-transcribe:
 
 ```bash
 uv run meeting-workflow process --force
@@ -102,16 +102,14 @@ uv run meeting-workflow process --force
 
 ### Ollama not reachable
 
-Start Ollama, then:
-
 ```bash
-ollama serve   # if not running as a service
+ollama serve   # if not a service
 uv run meeting-workflow setup --pull-models
 ```
 
 ### macOS: CUDA / GPU errors
 
-Use CPU in `config.yaml`:
+CPU mode in `config.yaml`:
 
 ```yaml
 whisper:
@@ -121,15 +119,15 @@ whisper:
 
 ### Linux: CUDA libraries not found
 
-After `uv sync`, libraries live inside the venv. Always launch via:
+After `uv sync`, libs live in venv. Always:
 
 ```bash
 uv run meeting-workflow process
 ```
 
-If needed, `workflow/cuda_paths.py` sets `LD_LIBRARY_PATH` automatically at runtime.
+`workflow/cuda_paths.py` sets `LD_LIBRARY_PATH` at runtime if needed.
 
-## Getting help
+## Help
 
 1. `uv run meeting-workflow check`
 2. [SETUP.md](SETUP.md)

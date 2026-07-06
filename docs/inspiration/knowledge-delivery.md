@@ -1,34 +1,34 @@
-# Future inspiration: meeting knowledge → Cursor & second brain
+# Future: meeting knowledge to Cursor and second brain
 
-Post-v1 direction discussed 2026-07. Not scheduled work — captures architecture for when we add **publish** and downstream consumption.
+Post-v1 direction, 2026-07. Not scheduled — architecture for future **publish** + downstream consumption.
 
 ## Goal
 
-Get **tasks and decisions** from meetings into **AI coding agents** (Cursor) reliably, without per-seat SaaS lock-in.
+Tasks + decisions from meetings into **AI coding agents** (Cursor) reliably. No per-seat SaaS lock-in.
 
-## Recommended stack
+## Stack
 
 ```text
-Teams .mp4 (or optional live bot)
+Meeting recording .mp4 (or optional live bot)
   → meeting-workflow (transcript + visual capture + extraction.json)
   → publish → app-repo/docs/meetings/<date>-<slug>.md (+ optional .json)
   → Cursor @docs/meetings/... for implementation tasks
   → optional second brain (Obsidian / Notion) for human linking & tasks
 ```
 
-## Why this wins vs SaaS-only (Read, Fireflies, Fathom)
+## vs SaaS-only (Read, Fireflies, Fathom)
 
 | Need                                              | Pipeline + publish      | SaaS → Notion only   |
 | ------------------------------------------------- | ----------------------- | -------------------- |
 | Structured `action_items` (owner, task, deadline) | Yes (`extraction.json`) | Generic shape        |
-| Vision / whiteboard text in extraction            | Yes                     | Speech-first         |
+| Vision / whiteboard in extraction                 | Yes                     | Speech-first         |
 | Cursor `@` / repo index                           | Yes, in product repo    | Export glue required |
 | Privacy / local capture                           | Yes                     | Cloud                |
-| Fidelity rules (Spanish, no bot-as-attendee)      | Configurable prompts    | Opaque               |
+| Fidelity (Spanish, no bot-as-attendee)            | Configurable prompts    | Opaque               |
 
-SaaS can feed **capture** or team UI; **repo publish** feeds **coding agents**.
+SaaS = capture or team UI. Repo publish = coding agents.
 
-## Three tiers (what goes where)
+## Three tiers
 
 | Tier        | Content                                            | App repo?            | Use                    |
 | ----------- | -------------------------------------------------- | -------------------- | ---------------------- |
@@ -36,33 +36,32 @@ SaaS can feed **capture** or team UI; **repo publish** feeds **coding agents**.
 | Structured  | `extraction.json` sidecar                          | Optional             | Scripts, validation    |
 | Archive     | Full `transcript.json`, frames                     | No (local `output/`) | Debug, RAG later       |
 
-Do not commit full transcripts to the app repo by default — noisy for retrieval.
+Do not commit full transcripts to app repo by default — noisy for retrieval.
 
 ## Second brain (Notion / Obsidian)
 
-- **Not for Cursor directly** — agents index the repo, not Notion.
-- **For humans:** link meetings to projects, MOCs, task DBs.
-- **Pattern:** one extraction → two publishes (brain + repo), same source of truth in `extraction.json`.
+- Not for Cursor — agents index repo, not Notion
+- Humans: link meetings to projects, MOCs, task DBs
+- Pattern: one extraction, two publishes (brain + repo); source of truth `extraction.json`
 
 ## RAG
 
-- **Not needed** for single-meeting coding tasks (`@` one published file).
-- **Add later** when corpus is large (50+ meetings) or questions need **transcript-level** recall across meetings.
-- Structured extraction is pre-RAG compression; chunk **transcripts** if indexing.
+- Not needed for single-meeting coding (`@` one published file)
+- Add at 50+ meetings or cross-meeting transcript recall
+- Structured extraction = pre-RAG compression; chunk transcripts if indexing
 
 ## Cloud LLM for text-only extraction
 
-- Optional hybrid: local Whisper + vision; cloud pass for extraction (~$0.02–0.10/meeting).
-- Still publish same `extraction.json` shape.
+Optional hybrid: local Whisper + vision; cloud pass for extraction (~$0.02–0.10/meeting). Same `extraction.json` shape.
 
-## Likely next implementation
+## Likely next
 
-1. `meeting-workflow publish` — copy/enrich `extraction.json` + `summary.md` to configurable `docs/meetings/` path; update `index.md`.
-2. Optional adapters: Obsidian vault, Notion API (second brain).
-3. Optional `index` command for transcript RAG / MCP search (scale).
+1. `meeting-workflow publish` — copy/enrich `extraction.json` + `summary.md` to `docs/meetings/`; update `index.md`
+2. Optional adapters: Obsidian vault, Notion API
+3. Optional `index` for transcript RAG / MCP search
 
 ## References
 
-- Output layout: [README.md](../../README.md)
-- Structured schema: [workflow/extraction.py](../../workflow/extraction.py)
-- PRD out of scope (v1): publish, RAG, NotebookLM — [PRD.md](../PRD.md)
+- Output: [README.md](../../README.md)
+- Schema: [workflow/extraction.py](../../workflow/extraction.py)
+- PRD out of scope v1: [PRD.md](../PRD.md)
