@@ -6,6 +6,7 @@ import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 
 from PIL import Image, ImageFilter
@@ -119,7 +120,7 @@ def gap_fill_interval_timestamps(
             times.append(t)
             t += interval_seconds
 
-    for start, end in zip(keyframes, keyframes[1:], strict=False):
+    for start, end in pairwise(keyframes):
         if end - start > gap_seconds:
             t = start + interval_seconds
             while t < end - interval_seconds / 2:
@@ -219,7 +220,7 @@ def average_hash(path: Path, *, hash_size: int = 8) -> int:
 
 
 def layout_hash(path: Path, *, hash_size: int = 8, blur_radius: float = 4.0) -> int:
-    """Blur-tolerant hash for layout comparison (ignores Teams speaker highlights)."""
+    """Blur-tolerant hash for layout comparison (ignores active-speaker highlights)."""
     with Image.open(path) as img:
         gray = img.convert("L").resize((64, 64), Image.Resampling.LANCZOS)
         if blur_radius > 0:

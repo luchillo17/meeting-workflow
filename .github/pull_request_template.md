@@ -1,6 +1,6 @@
 ## Summary
 
-<!-- What changed and why -->
+<!-- what changed, why -->
 
 ## Test plan
 
@@ -8,6 +8,6 @@
 
 ## Issues
 
-<!-- Link issues this PR completes. Use "Closes #N" to auto-close on merge. -->
+<!-- Closes #N on merge -->
 
 Closes #

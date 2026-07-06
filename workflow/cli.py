@@ -27,7 +27,7 @@ _STATUS_STYLE = {"ok": "green", "warn": "yellow", "fail": "red"}
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="meeting-workflow",
-        description="Meeting Workflow — process Teams Meeting Recordings locally",
+        description="Meeting Workflow — process meeting recordings locally",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 

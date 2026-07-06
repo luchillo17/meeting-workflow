@@ -13,7 +13,7 @@ def _windows_nvidia_bin_dirs() -> list[Path]:
     except ImportError:
         return []
 
-    root = Path(list(nvidia.__path__)[0])
+    root = Path(next(iter(nvidia.__path__)))
     candidates = (
         root / "cublas" / "bin",
         root / "cudnn" / "bin",
@@ -39,7 +39,7 @@ def _unix_nvidia_lib_dirs() -> list[Path]:
     except ImportError:
         return []
 
-    root = Path(list(nvidia.__path__)[0])
+    root = Path(next(iter(nvidia.__path__)))
     return [path for path in (root / "cublas" / "lib", root / "cudnn" / "lib") if path.is_dir()]
 
 

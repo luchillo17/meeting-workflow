@@ -2,19 +2,19 @@
 
 #1
 
-## What to build
+## Build
 
-Replace the mocked transcriber adapter with a real implementation: extract mono audio via ffmpeg, transcribe Spanish speech with faster-whisper per `config.yaml`, and write `transcript.json` + `transcript.txt` into the Extraction. Other stages may remain mocked so the Workflow Run still completes end-to-end in tests.
+Replace mocked transcriber with real: ffmpeg mono audio, faster-whisper Spanish per `config.yaml`, write `transcript.json` + `transcript.txt`. Other stages may stay mocked for end-to-end tests.
 
-Unload the whisper model before later stages (sequential VRAM use).
+Unload whisper model before later stages.
 
-## Acceptance criteria
+## Acceptance
 
-- [x] Real Meeting Recording produces readable Spanish `transcript.txt` and segmented `transcript.json`
-- [x] Transcriber adapter is injectable; WorkflowRunner tests still pass with fakes
-- [x] Whisper model is not held in memory after transcription stage completes
-- [x] Audio extraction failures surface a clear error
+- [x] Real `.mp4` produces Spanish `transcript.txt` + segmented `transcript.json`
+- [x] Transcriber injectable; WorkflowRunner tests pass with fakes
+- [x] Whisper not in memory after transcription
+- [x] Audio extraction failures = clear error
 
 ## Blocked by
 
-#2 (WorkflowRunner + mocked adapters)
+#2

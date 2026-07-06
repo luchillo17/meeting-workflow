@@ -1,7 +1,7 @@
 [project]
 name = "meeting-workflow"
 version = "0.1.0"
-description = "Local-first workflow for Teams Meeting Recordings"
+description = "Local-first workflow for meeting recordings"
 requires-python = ">=3.12"
 dependencies = [
     "Pillow>=10.0.0",
@@ -27,10 +27,25 @@ package = true
 
 [dependency-groups]
 dev = [
+    "deptry>=0.23.0",
     "pre-commit>=4.2.0",
     "pytest>=9.1.1",
     "ruff>=0.11.0",
 ]
+
+[tool.deptry]
+known_first_party = ["workflow"]
+
+[tool.deptry.package_module_name_map]
+Pillow = "PIL"
+pyyaml = "yaml"
+"nvidia-cublas-cu12" = "nvidia"
+"nvidia-cudnn-cu12" = "nvidia"
+
+[tool.deptry.per_rule_ignores]
+# Transitive runtime deps of faster-whisper; imported lazily for GPU checks/cleanup.
+DEP001 = ["ctranslate2", "torch"]
+DEP003 = ["ctranslate2", "torch"]
 
 [tool.ruff]
 line-length = 100

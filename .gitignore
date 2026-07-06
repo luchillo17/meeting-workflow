@@ -15,6 +15,7 @@ __pycache__/
 
 # Node (if/when JS/TS tooling is added)
 node_modules/
+.fallow/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

@@ -2,17 +2,17 @@
 
 #1
 
-## What to build
+## Build
 
-Add real **Visual Capture**: ffmpeg frame extraction (scene-change + interval fallback + transcript visual-cue boost), frame cap, resize, and near-duplicate dedup per `config.yaml`. Write `frames/` and `frames.json`. Run vision adapter (mocked in tests, real Ollama in production) to produce `visual_content.json`.
+Real **Visual Capture**: ffmpeg frames (scene-change + interval fallback + transcript visual-cue boost), cap, resize, near-duplicate dedup per `config.yaml`. Write `frames/`, `frames.json`. Vision adapter: mocked in tests, real Ollama in prod. Output `visual_content.json`.
 
-## Acceptance criteria
+## Acceptance
 
-- [x] Frames extracted when a recording has scene changes or visual-cue segments in the Transcript
-- [x] Frame count respects `max_frames`; images resized per config
-- [x] `visual_content.json` lists timestamp, type, and description per frame
-- [x] WorkflowRunner tests pass with fake vision adapter
+- [x] Frames when scene changes or visual-cue segments in Transcript
+- [x] Frame count respects `max_frames`; resize per config
+- [x] `visual_content.json`: timestamp, type, description per frame
+- [x] WorkflowRunner tests pass with fake vision
 
 ## Blocked by
 
-#3 (real Transcript stage)
+#3

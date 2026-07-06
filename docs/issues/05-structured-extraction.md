@@ -2,18 +2,18 @@
 
 #1
 
-## What to build
+## Build
 
-Replace mocked text/vision adapters with real Ollama HTTP clients. Merge Transcript + Visual Capture into **Structured Extraction** (`extraction.json`) and render **Summary** (`summary.md`) per the PRD schema. Prompt templates in English; output language from `output.language` (defaults to `whisper.language`). Sequential model loading: transcription complete before vision; vision complete before text extraction.
+Real Ollama HTTP clients for text/vision. Merge Transcript + Visual Capture into **Structured Extraction** (`extraction.json`) + **Summary** (`summary.md`) per PRD schema. English prompt templates; output language from `output.language` (default `whisper.language`). Sequential load: transcription done before vision; vision before text extraction.
 
-## Acceptance criteria
+## Acceptance
 
-- [x] `extraction.json` matches PRD schema fields (meeting_date, topic, action_items, etc.)
-- [x] `summary.md` renders the same facts for human reading
-- [x] `meeting_date` populated from filename when parseable
-- [x] Only one heavy model loaded at a time during a Workflow Run
-- [x] WorkflowRunner integration test passes with fake Ollama responses
+- [x] `extraction.json` matches PRD schema (meeting_date, topic, action_items, …)
+- [x] `summary.md` same facts for humans
+- [x] `meeting_date` from filename when parseable
+- [x] One heavy model in VRAM at a time
+- [x] WorkflowRunner integration test with fake Ollama
 
 ## Blocked by
 
-#4 (Visual Capture)
+#4
