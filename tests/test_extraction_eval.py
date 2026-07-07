@@ -133,3 +133,26 @@ def test_load_chapter_and_visual_counts(tmp_path: Path) -> None:
     write_json(output_dir / "visual_content.json", [{"x": 1}])
     assert load_chapter_count(output_dir) == 2
     assert load_visual_frame_count(output_dir) == 1
+
+
+def test_evaluate_extraction_grounding_ratio_failure() -> None:
+    extraction = {
+        "topic": "Portal paciente",
+        "key_decisions": ["Priorizar portal responsivo"],
+        "action_items": [{"owner": "", "task": "Inventar blockchain", "deadline": ""}],
+        "blockers_risks": [],
+        "status_updates": [],
+        "technical_details": [],
+        "open_questions": [],
+        "next_steps": [],
+    }
+    transcript = "Priorizamos el portal responsivo y el menú hamburguesa." * 30
+
+    failures = evaluate_extraction(
+        extraction,
+        checks={"min_transcript_chars": 1_000, "min_grounding_ratio": 0.75},
+        transcript_chars=len(transcript),
+        transcript_text=transcript,
+    )
+
+    assert any("grounding ratio" in message for message in failures)

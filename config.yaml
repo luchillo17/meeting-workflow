@@ -14,7 +14,10 @@ extraction:
   chapter_trigger_chars: 12000 # auto mode threshold for map-reduce vs single pass
   chapter_target_chars: 8000 # per-chapter size target (segment boundaries)
   chapter_min_chars: 1500 # merge trailing short chapter into previous
-  grounding_check: true # second pass drops extraction items unsupported by chapter text
+  grounding_check: true # LLM pass drops items unsupported by chapter text
+  deterministic_grounding: true # token-overlap filter after LLM extraction
+  grounding_min_overlap: 0.34 # min fraction of bullet tokens found in transcript/vision
+  grounding_min_token_length: 4
   max_transcript_chars: 12000 # single-pass cap; qwen3.5 JSON mode breaks above ~17k prompt chars
   transcript_sampling: head_tail # head = truncate start only; head_tail keeps opening + closing
   head_tail_start_ratio: 0.7 # fraction of max_transcript_chars for the opening (rest = closing)

@@ -33,6 +33,8 @@ def test_build_extraction_prompt_includes_fidelity_rules() -> None:
     assert "Fidelity rules" in prompt
     assert "Do not infer unstated" in prompt
     assert "Write all JSON string values in Spanish" in prompt
+    assert "deadline" in prompt
+    assert "Do not invent deadlines" in prompt
 
 
 def test_build_extraction_prompt_uses_configured_output_language() -> None:
@@ -272,7 +274,10 @@ def test_ollama_extractor_writes_extraction_and_summary(tmp_path: Path) -> None:
         }
 
     extractor = OllamaStructuredExtractor(
-        {"ollama": {"base_url": "http://localhost:11434", "text_model": "qwen2.5:7b"}},
+        {
+            "ollama": {"base_url": "http://localhost:11434", "text_model": "qwen2.5:7b"},
+            "extraction": {"deterministic_grounding": False},
+        },
         chat_fn=fake_chat,
     )
     visual = [{"timestamp": "00:00:05", "type": "slide", "description": "Timeline"}]

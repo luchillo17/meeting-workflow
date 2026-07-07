@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from workflow.extraction_grounding import compute_grounding_ratio
+
 # Pilot meetings: count/structure guards + domain terms (not golden-file accuracy).
 PILOT_MEETING_CHECKS: tuple[dict[str, Any], ...] = (
     {
@@ -18,6 +20,7 @@ PILOT_MEETING_CHECKS: tuple[dict[str, Any], ...] = (
         "must_contain": ("convenio",),
         "transcript_terms": ("convenio", "ips"),
         "must_not_contain": ("read.ai", "otter.ai", "fireflies"),
+        "min_grounding_ratio": 0.45,
     },
     {
         "slug_prefix": "revisión-aspectos-relevantes-poc",
@@ -29,6 +32,7 @@ PILOT_MEETING_CHECKS: tuple[dict[str, Any], ...] = (
         "must_contain": ("portal",),
         "transcript_terms": ("portal",),
         "must_not_contain": ("read.ai",),
+        "min_grounding_ratio": 0.45,
     },
     {
         "slug_prefix": "revision-avances-mvp",
@@ -39,6 +43,7 @@ PILOT_MEETING_CHECKS: tuple[dict[str, Any], ...] = (
         "min_visual_frames": 3,
         "transcript_terms": ("mvp",),
         "must_not_contain": ("read.ai",),
+        "min_grounding_ratio": 0.45,
     },
     {
         "slug_prefix": "revision-formato-hc-laboral",
@@ -50,6 +55,7 @@ PILOT_MEETING_CHECKS: tuple[dict[str, Any], ...] = (
         "must_contain": ("historia",),
         "transcript_terms": ("historia", "laboral"),
         "must_not_contain": ("read.ai",),
+        "min_grounding_ratio": 0.45,
     },
 )
 
@@ -108,6 +114,25 @@ def load_visual_frame_count(output_dir: Path) -> int:
     return len(data) if isinstance(data, list) else 0
 
 
+def load_visual_text(output_dir: Path) -> str:
+    visual_path = output_dir / "visual_content.json"
+    if not visual_path.is_file():
+        return ""
+    try:
+        data = json.loads(visual_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(data, list):
+        return ""
+    parts: list[str] = []
+    for entry in data:
+        if isinstance(entry, dict):
+            desc = str(entry.get("description", "")).strip()
+            if desc:
+                parts.append(desc)
+    return " ".join(parts)
+
+
 def _extraction_blob(extraction: dict[str, Any]) -> str:
     parts: list[str] = [str(extraction.get("topic", ""))]
     for key in (
@@ -133,6 +158,8 @@ def evaluate_extraction(
     transcript_text: str = "",
     chapter_count: int = 0,
     visual_frame_count: int = 0,
+    visual_text: str = "",
+    grounding_min_overlap: float = 0.34,
 ) -> list[str]:
     """Return human-readable failure messages; empty list means all checks passed."""
     failures: list[str] = []
@@ -189,6 +216,20 @@ def evaluate_extraction(
         if term in transcript_lower and term not in blob:
             failures.append(f"transcript mentions {needle!r} but extraction does not")
 
+    min_grounding = float(checks.get("min_grounding_ratio", 0))
+    if long_meeting and min_grounding > 0 and transcript_text.strip():
+        ratio, grounded, total = compute_grounding_ratio(
+            extraction,
+            transcript_text=transcript_text,
+            visual_text=visual_text,
+            min_overlap_ratio=grounding_min_overlap,
+        )
+        if total and ratio < min_grounding:
+            failures.append(
+                f"grounding ratio {ratio:.2f} below minimum {min_grounding:.2f} "
+                f"({grounded}/{total} items)"
+            )
+
     return failures
 
 
@@ -211,6 +252,7 @@ def evaluate_output_dir(output_dir: Path, *, checks: dict[str, Any]) -> list[str
         transcript_text=transcript_text,
         chapter_count=load_chapter_count(output_dir),
         visual_frame_count=load_visual_frame_count(output_dir),
+        visual_text=load_visual_text(output_dir),
     )
 
 

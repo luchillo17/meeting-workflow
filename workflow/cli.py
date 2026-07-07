@@ -57,6 +57,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Re-run extraction only (reuse transcript, frames, and vision)",
     )
     process.add_argument(
+        "--vision-only",
+        action="store_true",
+        help=(
+            "Re-run vision + extraction (reuse transcript and frames; "
+            "refreshes visual_content.json)"
+        ),
+    )
+    process.add_argument(
         "--folder",
         type=Path,
         action="append",
@@ -278,7 +286,11 @@ def _run_workflow_batch(
     *,
     force: bool,
     extract_only: bool,
+    vision_only: bool = False,
 ) -> int:
+    if extract_only and vision_only:
+        print("Error: use only one of --extract-only or --vision-only", file=sys.stderr)
+        return 1
     config = _config_with_env(settings)
     transcriber = WhisperTranscriber(config)
     runner = WorkflowRunner(
@@ -289,7 +301,12 @@ def _run_workflow_batch(
         OllamaStructuredExtractor(config),
     )
     try:
-        runner.run_batch(files, force=force, extract_only=extract_only)
+        runner.run_batch(
+            files,
+            force=force,
+            extract_only=extract_only,
+            vision_only=vision_only,
+        )
     except (FileNotFoundError, RuntimeError, ValueError, OSError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
@@ -301,6 +318,9 @@ def _run_workflow_batch(
 
 def cmd_process(args: argparse.Namespace) -> int:
     ensure_cuda_dll_paths()
+    if args.extract_only and args.vision_only:
+        print("Error: use only one of --extract-only or --vision-only", file=sys.stderr)
+        return 1
     settings = Settings.load()
     files: list[Path] = list(args.files or [])
     if args.folders:
@@ -326,7 +346,13 @@ def cmd_process(args: argparse.Namespace) -> int:
         )
         return 1
 
-    return _run_workflow_batch(settings, files, force=args.force, extract_only=args.extract_only)
+    return _run_workflow_batch(
+        settings,
+        files,
+        force=args.force,
+        extract_only=args.extract_only,
+        vision_only=args.vision_only,
+    )
 
 
 def cmd_scan(args: argparse.Namespace) -> int:

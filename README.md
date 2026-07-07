@@ -25,6 +25,9 @@ uv run meeting-workflow process --file meeting-a.mp4 --file meeting-b.mp4
 # Re-run extraction only (reuse transcript + vision)
 uv run meeting-workflow process --extract-only --file meeting-a.mp4
 
+# Re-run vision + extraction (reuse transcript + frames; refreshes visual_content.json)
+uv run meeting-workflow process --vision-only --file meeting-a.mp4
+
 # Regression spot-checks on pilot output folders
 uv run meeting-workflow eval
 uv run meeting-workflow inbox --eval   # fail inbox if eval fails after processing
@@ -56,27 +59,28 @@ Platform + GPU: **[docs/SETUP.md](docs/SETUP.md)**
 
 ## Commands
 
-| Command                                          | Description                                   |
-| ------------------------------------------------ | --------------------------------------------- |
-| `uv run meeting-workflow setup`                  | Create `.env`, ensure output dir              |
-| `uv run meeting-workflow setup --pull-models`    | Also `ollama pull` configured models          |
-| `uv run meeting-workflow check`                  | Preflight: ffmpeg, CUDA, Ollama, paths        |
-| `uv run meeting-workflow process`                | Workflow Run (`RECORDING_PATH` from `.env`)   |
-| `uv run meeting-workflow process --file PATH`    | Process specific recording (repeat for batch) |
-| `uv run meeting-workflow process --force`        | Reprocess even if Extraction exists           |
-| `uv run meeting-workflow process --extract-only` | Re-run extraction; reuse transcript + vision  |
-| `uv run meeting-workflow eval`                   | Pilot regression spot-checks on output dirs   |
-| `uv run meeting-workflow inbox --eval`           | Inbox + fail if pilot eval fails              |
-| `uv run meeting-workflow publish --all`          | Publish briefs to `docs/meetings/`            |
-| `uv run meeting-workflow publish --new`          | Publish only extractions not yet in docs      |
-| `uv run meeting-workflow publish --dir PATH`     | Publish one extraction folder                 |
-| `uv run meeting-workflow inbox`                  | Process pending + publish new briefs          |
-| `uv run meeting-workflow inbox --dry-run`        | Preview inbox plan without changes            |
-| `uv run meeting-workflow scan`                   | List recordings in watch folders + status     |
-| `uv run meeting-workflow scan --process`         | Process pending recordings from watch folders |
-| `uv run meeting-workflow process --folder PATH`  | Process pending recordings in one folder      |
-| `uv run meeting-workflow frames`                 | Frame extraction only (`transcript.json`)     |
-| `uv run meeting-workflow frames --force`         | Re-extract frames, no re-transcribe           |
+| Command                                          | Description                                           |
+| ------------------------------------------------ | ----------------------------------------------------- |
+| `uv run meeting-workflow setup`                  | Create `.env`, ensure output dir                      |
+| `uv run meeting-workflow setup --pull-models`    | Also `ollama pull` configured models                  |
+| `uv run meeting-workflow check`                  | Preflight: ffmpeg, CUDA, Ollama, paths                |
+| `uv run meeting-workflow process`                | Workflow Run (`RECORDING_PATH` from `.env`)           |
+| `uv run meeting-workflow process --file PATH`    | Process specific recording (repeat for batch)         |
+| `uv run meeting-workflow process --force`        | Reprocess even if Extraction exists                   |
+| `uv run meeting-workflow process --extract-only` | Re-run extraction; reuse transcript + vision          |
+| `uv run meeting-workflow process --vision-only`  | Re-run vision + extraction; reuse transcript + frames |
+| `uv run meeting-workflow eval`                   | Pilot regression spot-checks on output dirs           |
+| `uv run meeting-workflow inbox --eval`           | Inbox + fail if pilot eval fails                      |
+| `uv run meeting-workflow publish --all`          | Publish briefs to `docs/meetings/`                    |
+| `uv run meeting-workflow publish --new`          | Publish only extractions not yet in docs              |
+| `uv run meeting-workflow publish --dir PATH`     | Publish one extraction folder                         |
+| `uv run meeting-workflow inbox`                  | Process pending + publish new briefs                  |
+| `uv run meeting-workflow inbox --dry-run`        | Preview inbox plan without changes                    |
+| `uv run meeting-workflow scan`                   | List recordings in watch folders + status             |
+| `uv run meeting-workflow scan --process`         | Process pending recordings from watch folders         |
+| `uv run meeting-workflow process --folder PATH`  | Process pending recordings in one folder              |
+| `uv run meeting-workflow frames`                 | Frame extraction only (`transcript.json`)             |
+| `uv run meeting-workflow frames --force`         | Re-extract frames, no re-transcribe                   |
 
 Legacy: `uv run python run.py process`
 
@@ -109,7 +113,7 @@ Regression guards on four pilot folders under `OUTPUT_DIR` — not golden-file a
 - Domain terms in extraction blob (`must_contain`, `transcript_terms` when term appears in transcript)
 - Rejects SaaS bot artifacts (`read.ai`, etc.)
 
-Tune thresholds in `workflow/extraction_eval.py` (`PILOT_MEETING_CHECKS`). Vision filter signals: `workflow/extraction.py` (`SHARED_CONTENT_SIGNALS`, `is_low_value_visual_description`).
+Tune thresholds in `workflow/extraction_eval.py` (`PILOT_MEETING_CHECKS`). Vision filter signals: `workflow/extraction.py` (`SHARED_CONTENT_SIGNALS`, `is_low_value_visual_description`). Deterministic grounding: `workflow/extraction_grounding.py` ([ADR 0008](docs/adr/0008-deterministic-token-grounding.md)).
 
 ## Development
 
@@ -142,7 +146,7 @@ uv run pre-commit run --all-files
 - [docs/issues/](docs/issues/) — v1 checklist
 - [docs/PRD.md](docs/PRD.md) — requirements
 - [CONTEXT.md](CONTEXT.md) — ubiquitous language
-- [docs/adr/](docs/adr/) — ADRs
+- [docs/adr/](docs/adr/) — ADRs (GPU, vision, idempotency, owners, speaker attribution, eval, map-reduce, deterministic grounding)
 
 ## License
 
