@@ -16,8 +16,9 @@ from workflow.cuda_paths import ensure_cuda_dll_paths
 from workflow.extraction import OllamaStructuredExtractor
 from workflow.extraction_eval import evaluate_pilot_outputs
 from workflow.frames import FfmpegFrameExtractor, frames_bundle_valid, load_transcript_for_frames
+from workflow.inbox import plan_inbox, publish_targets
 from workflow.preflight import Check, has_failures, run_preflight
-from workflow.publish import discover_publishable, publish_output_dir
+from workflow.publish import discover_publishable, discover_unpublished, publish_output_dir
 from workflow.runner import WorkflowRunner
 from workflow.scan import (
     discover_recordings,
@@ -143,6 +144,55 @@ def _build_parser() -> argparse.ArgumentParser:
         "--all",
         action="store_true",
         help="Publish every folder under OUTPUT_DIR that has extraction.json",
+    )
+    publish_cmd.add_argument(
+        "--new",
+        action="store_true",
+        help="Publish only extractions not yet in docs/meetings/",
+    )
+
+    inbox_cmd = sub.add_parser(
+        "inbox",
+        help="Process pending recordings from watch folders, then publish new briefs",
+    )
+    inbox_cmd.add_argument(
+        "--folder",
+        type=Path,
+        action="append",
+        dest="folders",
+        metavar="PATH",
+        help="Watch folder (default: WATCH_FOLDERS or ONEDRIVE_ROOT/Grabaciones)",
+    )
+    inbox_cmd.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Include recordings in subfolders",
+    )
+    inbox_cmd.add_argument(
+        "--meetings-dir",
+        type=Path,
+        default=Path("docs/meetings"),
+        help="Destination for published briefs (default: docs/meetings)",
+    )
+    inbox_cmd.add_argument(
+        "--json",
+        action="store_true",
+        help="Also write extraction.json sidecar next to each published brief",
+    )
+    inbox_cmd.add_argument(
+        "--eval",
+        action="store_true",
+        help="Run pilot eval after processing (warn only; does not block publish)",
+    )
+    inbox_cmd.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show pending/unpublished plan without processing or publishing",
+    )
+    inbox_cmd.add_argument(
+        "--skip-process",
+        action="store_true",
+        help="Publish only; do not run workflow on pending recordings",
     )
 
     return parser
@@ -376,14 +426,18 @@ def cmd_publish(args: argparse.Namespace) -> int:
     console = Console()
     settings = Settings.load()
     meetings_dir = args.meetings_dir
-    if args.all or not args.dirs:
+    if args.new:
+        targets = discover_unpublished(settings.output_dir, meetings_dir)
+    elif args.dirs:
+        targets = list(args.dirs)
+    elif args.all:
         targets = discover_publishable(settings.output_dir)
     else:
-        targets = list(args.dirs)
+        targets = discover_publishable(settings.output_dir)
 
     if not targets:
-        print(f"Error: no publishable folders under {settings.output_dir}", file=sys.stderr)
-        return 1
+        console.print("[yellow]Nothing to publish[/yellow]")
+        return 0
 
     try:
         for output_dir in targets:
@@ -394,6 +448,75 @@ def cmd_publish(args: argparse.Namespace) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     return 0
+
+
+def cmd_inbox(args: argparse.Namespace) -> int:
+    console = Console()
+    settings = Settings.load()
+    folders = _resolve_watch_folders(args.folders)
+    if not folders:
+        print(
+            "Error: provide --folder or set WATCH_FOLDERS / ONEDRIVE_ROOT in .env",
+            file=sys.stderr,
+        )
+        return 1
+
+    plan = plan_inbox(
+        folders,
+        settings.output_dir,
+        args.meetings_dir,
+        recursive=args.recursive,
+    )
+    console.print(
+        f"[bold]Inbox[/bold] {plan.total_count} recording(s): "
+        f"[green]{plan.done_count} done[/green], "
+        f"[yellow]{len(plan.pending)} pending[/yellow], "
+        f"[cyan]{len(plan.unpublished)} unpublished[/cyan]"
+    )
+
+    if args.dry_run:
+        for recording in plan.pending:
+            console.print(f"  [yellow]would process[/yellow] {recording.name}")
+        for output_dir in plan.unpublished:
+            console.print(f"  [cyan]would publish[/cyan] {output_dir.name}")
+        return 0
+
+    exit_code = 0
+    if plan.pending and not args.skip_process:
+        ensure_cuda_dll_paths()
+        console.print(f"[cyan]Processing[/cyan] {len(plan.pending)} pending recording(s)")
+        exit_code = _run_workflow_batch(settings, plan.pending, force=False, extract_only=False)
+        if exit_code != 0:
+            return exit_code
+        plan = plan_inbox(
+            folders,
+            settings.output_dir,
+            args.meetings_dir,
+            recursive=args.recursive,
+        )
+
+    if plan.unpublished:
+        try:
+            paths = publish_targets(plan.unpublished, args.meetings_dir, include_json=args.json)
+            for path in paths:
+                console.print(f"[green]Published[/green] {path}")
+            console.print(f"[green]Updated[/green] {args.meetings_dir / 'index.md'}")
+        except (FileNotFoundError, ValueError, OSError, json.JSONDecodeError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+    else:
+        console.print("[dim]No new extractions to publish[/dim]")
+
+    if args.eval:
+        failures = evaluate_pilot_outputs(settings.output_dir)
+        if failures:
+            console.print("[yellow]Pilot eval reported issues[/yellow]")
+            for failure in failures:
+                console.print(f"  - {failure}")
+        else:
+            console.print(f"[green]Pilot eval passed[/green] for {settings.output_dir}")
+
+    return exit_code
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -412,4 +535,6 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_publish(args)
     if args.command == "scan":
         return cmd_scan(args)
+    if args.command == "inbox":
+        return cmd_inbox(args)
     return 1

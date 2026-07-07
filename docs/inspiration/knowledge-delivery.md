@@ -56,9 +56,10 @@ Optional hybrid: local Whisper + vision; cloud pass for extraction (~$0.02–0.1
 
 ## Likely next
 
-1. `meeting-workflow publish` — copy/enrich `extraction.json` + `summary.md` to `docs/meetings/`; update `index.md`
-2. Optional adapters: Obsidian vault, Notion API
-3. Optional `index` for transcript RAG / MCP search
+1. ~~`meeting-workflow publish`~~ — done ([#16](https://github.com/luchillo17/meeting-workflow/pull/16))
+2. ~~`meeting-workflow scan` / `inbox`~~ — scan ([#17](https://github.com/luchillo17/meeting-workflow/pull/17)), inbox orchestration in progress
+3. Optional adapters: Obsidian vault, Notion API
+4. Optional `index` for transcript RAG / MCP search
 
 ## References
 
