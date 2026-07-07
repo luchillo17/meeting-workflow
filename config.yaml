@@ -50,6 +50,10 @@ frames:
   jpeg_quality: 3 # ffmpeg -q:v (lower = better quality)
   max_width: 1280
 
+vision:
+  # Post-filter: drop bot chrome and tile-only frames; keep slide/diagram/whiteboard + shared content
+  keep_structured_types: true
+
 visual_cues:
   - tablero
   - diagrama

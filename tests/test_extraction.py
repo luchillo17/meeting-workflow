@@ -92,6 +92,14 @@ def test_select_visual_for_extraction_filters_tiles_and_caps() -> None:
 def test_is_low_value_visual_description() -> None:
     assert is_low_value_visual_description("read.ai meeting notes con círculos CJ")
     assert not is_low_value_visual_description("Pantalla del navegador con parámetros del convenio")
+    assert not is_low_value_visual_description(
+        "Videollamada con participantes visibles y pantalla Figma del formulario",
+    )
+    assert not is_low_value_visual_description(
+        "Diagrama breve",
+        frame_type="diagram",
+    )
+    assert is_low_value_visual_description("Solo participantes visibles en la videollamada")
 
 
 def test_sanitize_visual_description_unwraps_json() -> None:

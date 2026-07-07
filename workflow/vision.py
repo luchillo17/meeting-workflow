@@ -95,7 +95,7 @@ class OllamaVisionAnalyzer:
                 if frame_type == "skip" or not description.strip():
                     continue
                 description = sanitize_visual_description(description)
-                if is_low_value_visual_description(description):
+                if is_low_value_visual_description(description, frame_type=frame_type):
                     continue
                 seconds = timestamps.get(
                     str(frame_path), timestamps.get(frame_path.as_posix(), 0.0)
