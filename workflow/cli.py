@@ -13,6 +13,7 @@ from rich.console import Console
 
 from workflow.cuda_paths import ensure_cuda_dll_paths
 from workflow.extraction import OllamaStructuredExtractor
+from workflow.extraction_eval import evaluate_pilot_outputs
 from workflow.frames import FfmpegFrameExtractor, frames_bundle_valid, load_transcript_for_frames
 from workflow.preflight import Check, has_failures, run_preflight
 from workflow.runner import WorkflowRunner
@@ -62,6 +63,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--pull-models",
         action="store_true",
         help="Run ollama pull for configured text and vision models",
+    )
+
+    eval_cmd = sub.add_parser(
+        "eval", help="Run pilot extraction spot-checks against output folders"
+    )
+    eval_cmd.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Output root to scan (default: OUTPUT_DIR from settings)",
     )
 
     return parser
@@ -205,6 +215,20 @@ def cmd_frames(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_eval(args: argparse.Namespace) -> int:
+    console = Console()
+    settings = Settings.load()
+    output_root = args.output_dir or settings.output_dir
+    failures = evaluate_pilot_outputs(output_root)
+    if not failures:
+        console.print(f"[green]Pilot eval passed[/green] for {output_root}")
+        return 0
+    console.print(f"[red]Pilot eval failed[/red] for {output_root}")
+    for failure in failures:
+        console.print(f"  - {failure}")
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.command == "check":
@@ -215,4 +239,6 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_process(args)
     if args.command == "frames":
         return cmd_frames(args)
+    if args.command == "eval":
+        return cmd_eval(args)
     return 1

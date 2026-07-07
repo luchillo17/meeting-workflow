@@ -16,6 +16,13 @@ from workflow.output_language import (
     resolve_output_language,
 )
 from workflow.summary import render_summary
+from workflow.transcript_chapters import (
+    TranscriptChapter,
+    load_chapter_bundle,
+    split_segments_into_chapters,
+    visual_for_time_range,
+    write_chapter_bundle,
+)
 from workflow.utils import parse_meeting_date, write_json
 
 logger = logging.getLogger(__name__)
@@ -69,6 +76,56 @@ Transcript:
 
 Visual captures (supplementary — max {visual_count} shown):
 {visual}
+"""
+
+_MERGE_EXTRACTION_PROMPT = """\
+Merge partial meeting extractions from sequential chapters into one JSON object.
+
+Write all JSON string values in {output_language}.
+
+Return a single JSON object with this exact shape:
+{{
+  "topic": "short meeting title for the whole meeting",
+  "key_decisions": ["..."],
+  "action_items": [{{"owner": "name or empty", "task": "...", "deadline": "date or empty"}}],
+  "blockers_risks": ["..."],
+  "status_updates": ["..."],
+  "technical_details": ["..."],
+  "open_questions": ["..."],
+  "next_steps": ["..."]
+}}
+
+Rules:
+- Combine chapter findings; remove duplicates and near-duplicates.
+- Keep the most specific wording when two items describe the same fact.
+- Do not invent facts that are absent from the chapter extractions or visual captures.
+- Use visual captures only for technical_details and topic context.
+
+Return only the JSON object, no markdown or extra text.
+{correction_hint}
+
+Chapter extractions:
+{chapters}
+
+Visual captures (supplementary — max {visual_count} shown):
+{visual}
+"""
+
+_GROUNDING_PROMPT = """Review a merged meeting extraction against chapter transcript text.
+
+Write all JSON string values in {output_language}.
+
+Remove any key_decisions, action_items, blockers_risks, status_updates, technical_details,
+open_questions, or next_steps that are NOT supported by the chapter transcripts below.
+Keep supported items unchanged. Synthesize one concise topic.
+
+Return only the corrected JSON object matching the same schema. No markdown or prose.
+
+Merged extraction to verify:
+{merged}
+
+Chapter transcripts:
+{chapters}
 """
 
 _SYSTEM_PROMPT = (
@@ -133,8 +190,29 @@ def extraction_json_schema() -> dict[str, Any]:
     }
 
 
-def is_low_value_visual_description(description: str) -> bool:
+def sanitize_visual_description(description: str) -> str:
+    """Unwrap JSON-shaped vision output and return plain description text."""
     text = description.strip()
+    if not text:
+        return ""
+    candidates = [text]
+    match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+    if match:
+        candidates.append(match.group(0))
+    for candidate in candidates:
+        try:
+            data = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict):
+            inner = data.get("description")
+            if inner is not None and str(inner).strip():
+                return str(inner).strip()
+    return text
+
+
+def is_low_value_visual_description(description: str) -> bool:
+    text = sanitize_visual_description(description)
     if not text:
         return True
     if _LOW_VALUE_VISUAL_RE.search(text):
@@ -165,12 +243,23 @@ def select_visual_for_extraction(
     *,
     max_frames: int = 8,
     max_description_chars: int = 400,
+    start_seconds: float | None = None,
+    end_seconds: float | None = None,
+    time_padding_seconds: float = 30.0,
 ) -> list[dict]:
     if max_frames <= 0:
         return []
+    scoped = visual_content
+    if start_seconds is not None and end_seconds is not None:
+        scoped = visual_for_time_range(
+            visual_content,
+            start_seconds,
+            end_seconds,
+            padding_seconds=time_padding_seconds,
+        )
     candidates = [
         entry
-        for entry in visual_content
+        for entry in scoped
         if isinstance(entry, dict)
         and not is_low_value_visual_description(str(entry.get("description", "")))
     ]
@@ -182,7 +271,7 @@ def select_visual_for_extraction(
     selected.sort(key=lambda entry: str(entry.get("timestamp", "")))
     trimmed: list[dict] = []
     for entry in selected:
-        desc = str(entry.get("description", "")).strip()
+        desc = sanitize_visual_description(str(entry.get("description", "")))
         if max_description_chars > 0 and len(desc) > max_description_chars:
             desc = desc[:max_description_chars] + "..."
         trimmed.append(
@@ -279,6 +368,9 @@ def build_extraction_prompt(
     head_tail_start_ratio: float = 0.7,
     max_visual_frames: int = 8,
     max_visual_description_chars: int = 400,
+    visual_time_padding_seconds: float = 30.0,
+    visual_start_seconds: float | None = None,
+    visual_end_seconds: float | None = None,
     correction_hint: str = "",
 ) -> str:
     text = sample_transcript_text(
@@ -291,6 +383,9 @@ def build_extraction_prompt(
         visual_content,
         max_frames=max_visual_frames,
         max_description_chars=max_visual_description_chars,
+        start_seconds=visual_start_seconds,
+        end_seconds=visual_end_seconds,
+        time_padding_seconds=visual_time_padding_seconds,
     )
     visual_lines = []
     for entry in visual_subset:
@@ -311,6 +406,119 @@ def build_extraction_prompt(
 
 def build_extraction_system_prompt(*, output_language: str = "es") -> str:
     return _SYSTEM_PROMPT.format(output_language=language_display_name(output_language))
+
+
+def _format_visual_lines(visual_subset: list[dict]) -> str:
+    visual_lines = []
+    for entry in visual_subset:
+        ts = entry.get("timestamp", "")
+        kind = entry.get("type", "other")
+        desc = entry.get("description", "")
+        visual_lines.append(f"- [{ts}] ({kind}) {desc}")
+    return "\n".join(visual_lines) if visual_lines else "(no visual captures)"
+
+
+def build_merge_extraction_prompt(
+    chapter_extractions: list[tuple[TranscriptChapter, dict[str, Any]]],
+    visual_content: list[dict],
+    *,
+    output_language: str = "es",
+    max_visual_frames: int = 8,
+    max_visual_description_chars: int = 400,
+    correction_hint: str = "",
+) -> str:
+    chapter_blocks: list[str] = []
+    for chapter, raw in chapter_extractions:
+        chapter_blocks.append(
+            f"### {chapter.time_range_label}\n{json.dumps(raw, ensure_ascii=False, indent=2)}"
+        )
+    visual_subset = select_visual_for_extraction(
+        visual_content,
+        max_frames=max_visual_frames,
+        max_description_chars=max_visual_description_chars,
+    )
+    hint_block = f"\n{correction_hint.strip()}\n" if correction_hint.strip() else ""
+    return _MERGE_EXTRACTION_PROMPT.format(
+        chapters="\n\n".join(chapter_blocks),
+        visual=_format_visual_lines(visual_subset),
+        visual_count=len(visual_subset),
+        output_language=language_display_name(output_language),
+        correction_hint=hint_block,
+    )
+
+
+def build_grounding_prompt(
+    merged_raw: dict[str, Any],
+    chapters: list[TranscriptChapter],
+    *,
+    output_language: str = "es",
+) -> str:
+    chapter_blocks = [f"### {chapter.time_range_label}\n{chapter.text}" for chapter in chapters]
+    return _GROUNDING_PROMPT.format(
+        merged=json.dumps(merged_raw, ensure_ascii=False, indent=2),
+        chapters="\n\n".join(chapter_blocks),
+        output_language=language_display_name(output_language),
+    )
+
+
+def _dedupe_strings(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        key = re.sub(r"\s+", " ", item.strip().lower())
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        result.append(item.strip())
+    return result
+
+
+def merge_chapter_extractions_deterministic(
+    chapter_extractions: list[tuple[TranscriptChapter, dict[str, Any]]],
+) -> dict[str, Any]:
+    """Fallback merge used in tests when LLM merge is unavailable."""
+    merged: dict[str, Any] = {
+        "topic": "",
+        "key_decisions": [],
+        "action_items": [],
+        "blockers_risks": [],
+        "status_updates": [],
+        "technical_details": [],
+        "open_questions": [],
+        "next_steps": [],
+    }
+    for _chapter, raw in chapter_extractions:
+        if not merged["topic"] and raw.get("topic"):
+            merged["topic"] = raw.get("topic")
+        for key in (
+            "key_decisions",
+            "blockers_risks",
+            "status_updates",
+            "technical_details",
+            "open_questions",
+            "next_steps",
+        ):
+            merged[key].extend(_as_string_list(raw.get(key)))
+        merged["action_items"].extend(_as_action_items(raw.get("action_items")))
+    for key in (
+        "key_decisions",
+        "blockers_risks",
+        "status_updates",
+        "technical_details",
+        "open_questions",
+        "next_steps",
+    ):
+        merged[key] = _dedupe_strings(merged[key])
+    deduped_actions: list[dict[str, str]] = []
+    seen_tasks: set[str] = set()
+    for item in merged["action_items"]:
+        task_key = re.sub(r"\s+", " ", item["task"].strip().lower())
+        if not task_key or task_key in seen_tasks:
+            continue
+        seen_tasks.add(task_key)
+        deduped_actions.append(item)
+    merged["action_items"] = deduped_actions
+    return merged
 
 
 def _parse_json_object(content: str) -> dict[str, Any]:
@@ -454,6 +662,16 @@ class OllamaStructuredExtractor:
         self._retry_on_empty_extraction = bool(
             extraction_cfg.get("retry_on_empty_extraction", True)
         )
+        self._extraction_mode = str(extraction_cfg.get("mode", "auto"))
+        self._chapter_trigger_chars = int(
+            extraction_cfg.get("chapter_trigger_chars", self._max_transcript_chars)
+        )
+        self._chapter_target_chars = int(extraction_cfg.get("chapter_target_chars", 8_000))
+        self._chapter_min_chars = int(extraction_cfg.get("chapter_min_chars", 1_500))
+        self._grounding_check = bool(extraction_cfg.get("grounding_check", True))
+        self._visual_time_padding_seconds = float(
+            extraction_cfg.get("visual_time_padding_seconds", 30.0)
+        )
         self._output_language = resolve_output_language(config)
         self._chat_fn = chat_fn
         self._unload = unload_fn or self._client.unload
@@ -468,39 +686,24 @@ class OllamaStructuredExtractor:
         unload_after: bool = True,
     ) -> dict:
         text = str(getattr(transcript, "text", ""))
+        segments = getattr(transcript, "segments", None)
+        if not isinstance(segments, list):
+            segments = []
         try:
-            raw = self._run_extraction_pass(text, visual_content, correction_hint="")
-            if self._retry_on_language_drift and extraction_has_language_drift(
-                raw, output_language=self._output_language
-            ):
-                raw = self._run_extraction_pass(
-                    text,
-                    visual_content,
-                    correction_hint=(
-                        f"CRITICAL: Your previous response used the wrong language. "
-                        f"Rewrite ALL string values in "
-                        f"{language_display_name(self._output_language)} only."
-                    ),
-                )
-            if (
-                self._retry_on_empty_extraction
-                and len(text) >= _MIN_TRANSCRIPT_FOR_EMPTY_RETRY
-                and extraction_is_structurally_empty(raw)
-            ):
-                raw = self._run_extraction_pass(
-                    text,
-                    visual_content,
-                    correction_hint=(
-                        "CRITICAL: The transcript is long and contains spoken decisions, "
-                        "tasks, and follow-ups. Extract key_decisions, action_items, "
-                        "blockers_risks, and next_steps from what participants SAID. "
-                        "Do not leave all structured lists empty."
-                    ),
-                )
+            raw = self._extract_raw(text, segments, visual_content, output_dir)
+            raw = self._post_process_raw(raw, text, visual_content, output_dir)
+            cleaned_visual = [
+                {
+                    **entry,
+                    "description": sanitize_visual_description(str(entry.get("description", ""))),
+                }
+                for entry in visual_content
+                if isinstance(entry, dict)
+            ]
             extraction = normalize_extraction(
                 raw,
                 meeting_date=parse_meeting_date(recording_name),
-                visual_content=visual_content,
+                visual_content=cleaned_visual,
                 output_language=self._output_language,
             )
             write_json(output_dir / "extraction.json", extraction)
@@ -510,24 +713,212 @@ class OllamaStructuredExtractor:
             if unload_after and self._settings.unload_between_stages:
                 self.unload()
 
+    def _resolve_extraction_mode(self, text_len: int) -> str:
+        if self._extraction_mode == "auto":
+            return "map_reduce" if text_len > self._chapter_trigger_chars else "single"
+        return self._extraction_mode
+
+    def _extract_raw(
+        self,
+        text: str,
+        segments: list[dict],
+        visual_content: list[dict],
+        output_dir: Path,
+    ) -> dict[str, Any]:
+        if self._resolve_extraction_mode(len(text)) == "map_reduce" and segments:
+            return self._map_reduce_extraction(segments, visual_content, output_dir)
+        return self._run_extraction_pass(text, visual_content, correction_hint="")
+
+    def _post_process_raw(
+        self,
+        raw: dict[str, Any],
+        text: str,
+        visual_content: list[dict],
+        output_dir: Path,
+    ) -> dict[str, Any]:
+        if self._retry_on_language_drift and extraction_has_language_drift(
+            raw, output_language=self._output_language
+        ):
+            raw = self._rerun_single_or_merge(
+                text,
+                visual_content,
+                output_dir,
+                correction_hint=(
+                    f"CRITICAL: Your previous response used the wrong language. "
+                    f"Rewrite ALL string values in "
+                    f"{language_display_name(self._output_language)} only."
+                ),
+            )
+        if (
+            self._retry_on_empty_extraction
+            and len(text) >= _MIN_TRANSCRIPT_FOR_EMPTY_RETRY
+            and extraction_is_structurally_empty(raw)
+        ):
+            raw = self._rerun_single_or_merge(
+                text,
+                visual_content,
+                output_dir,
+                correction_hint=(
+                    "CRITICAL: The transcript is long and contains spoken decisions, "
+                    "tasks, and follow-ups. Extract key_decisions, action_items, "
+                    "blockers_risks, and next_steps from what participants SAID. "
+                    "Do not leave all structured lists empty."
+                ),
+            )
+        return raw
+
+    def _rerun_single_or_merge(
+        self,
+        text: str,
+        visual_content: list[dict],
+        output_dir: Path,
+        *,
+        correction_hint: str,
+    ) -> dict[str, Any]:
+        chapters = load_chapter_bundle(output_dir)
+        if chapters:
+            chapter_extractions = self._load_chapter_extractions(output_dir, chapters)
+            if chapter_extractions:
+                return self._run_merge_pass(chapter_extractions, visual_content, correction_hint)
+        return self._run_extraction_pass(text, visual_content, correction_hint=correction_hint)
+
+    def _map_reduce_extraction(
+        self,
+        segments: list[dict],
+        visual_content: list[dict],
+        output_dir: Path,
+    ) -> dict[str, Any]:
+        chapters = split_segments_into_chapters(
+            segments,
+            target_chars=self._chapter_target_chars,
+            min_chars=self._chapter_min_chars,
+        )
+        if len(chapters) <= 1:
+            only = chapters[0].text if chapters else ""
+            return self._run_extraction_pass(only, visual_content, correction_hint="")
+        chapters = write_chapter_bundle(output_dir, chapters)
+        chapter_extractions: list[tuple[TranscriptChapter, dict[str, Any]]] = []
+        partial_dir = output_dir / "extraction" / "chapters"
+        partial_dir.mkdir(parents=True, exist_ok=True)
+        for chapter in chapters:
+            partial_path = partial_dir / f"chapter_{chapter.index:03d}.json"
+            chapter_visual = visual_for_time_range(
+                visual_content,
+                chapter.start_seconds,
+                chapter.end_seconds,
+                padding_seconds=self._visual_time_padding_seconds,
+            )
+            if partial_path.is_file():
+                raw = json.loads(partial_path.read_text(encoding="utf-8"))
+            else:
+                raw = self._run_chapter_pass(
+                    chapter,
+                    chapter_total=len(chapters),
+                    visual_content=chapter_visual,
+                )
+                write_json(partial_path, raw)
+            chapter_extractions.append((chapter, raw))
+        merged = self._run_merge_pass(chapter_extractions, visual_content)
+        if self._grounding_check:
+            merged = self._run_grounding_pass(merged, chapters)
+        return merged
+
+    def _load_chapter_extractions(
+        self,
+        output_dir: Path,
+        chapters: list[TranscriptChapter],
+    ) -> list[tuple[TranscriptChapter, dict[str, Any]]]:
+        partial_dir = output_dir / "extraction" / "chapters"
+        loaded: list[tuple[TranscriptChapter, dict[str, Any]]] = []
+        for chapter in chapters:
+            partial_path = partial_dir / f"chapter_{chapter.index:03d}.json"
+            if not partial_path.is_file():
+                return []
+            try:
+                raw = json.loads(partial_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                return []
+            if isinstance(raw, dict):
+                loaded.append((chapter, raw))
+        return loaded
+
+    def _run_chapter_pass(
+        self,
+        chapter: TranscriptChapter,
+        *,
+        chapter_total: int,
+        visual_content: list[dict],
+    ) -> dict[str, Any]:
+        hint = (
+            f"Section {chapter.index} of {chapter_total} ({chapter.time_range_label}). "
+            "Extract only facts spoken in this section."
+        )
+        return self._run_extraction_pass(
+            chapter.text,
+            visual_content,
+            correction_hint=hint,
+            max_transcript_chars=0,
+            visual_start_seconds=chapter.start_seconds,
+            visual_end_seconds=chapter.end_seconds,
+        )
+
+    def _run_merge_pass(
+        self,
+        chapter_extractions: list[tuple[TranscriptChapter, dict[str, Any]]],
+        visual_content: list[dict],
+        correction_hint: str = "",
+    ) -> dict[str, Any]:
+        prompt = _qwen_no_think_prefix(self._model) + build_merge_extraction_prompt(
+            chapter_extractions,
+            visual_content,
+            output_language=self._output_language,
+            max_visual_frames=self._max_visual_frames,
+            max_visual_description_chars=self._max_visual_description_chars,
+            correction_hint=correction_hint,
+        )
+        return self._chat_json(prompt)
+
+    def _run_grounding_pass(
+        self,
+        merged_raw: dict[str, Any],
+        chapters: list[TranscriptChapter],
+    ) -> dict[str, Any]:
+        prompt = _qwen_no_think_prefix(self._model) + build_grounding_prompt(
+            merged_raw,
+            chapters,
+            output_language=self._output_language,
+        )
+        return self._chat_json(prompt)
+
     def _run_extraction_pass(
         self,
         text: str,
         visual_content: list[dict],
         *,
         correction_hint: str,
+        max_transcript_chars: int | None = None,
+        visual_start_seconds: float | None = None,
+        visual_end_seconds: float | None = None,
     ) -> dict[str, Any]:
         prompt = _qwen_no_think_prefix(self._model) + build_extraction_prompt(
             text,
             visual_content,
             output_language=self._output_language,
-            max_transcript_chars=self._max_transcript_chars,
+            max_transcript_chars=(
+                self._max_transcript_chars if max_transcript_chars is None else max_transcript_chars
+            ),
             transcript_sampling=self._transcript_sampling,
             head_tail_start_ratio=self._head_tail_start_ratio,
             max_visual_frames=self._max_visual_frames,
             max_visual_description_chars=self._max_visual_description_chars,
+            visual_time_padding_seconds=self._visual_time_padding_seconds,
+            visual_start_seconds=visual_start_seconds,
+            visual_end_seconds=visual_end_seconds,
             correction_hint=correction_hint,
         )
+        return self._chat_json(prompt)
+
+    def _chat_json(self, prompt: str) -> dict[str, Any]:
         payload = {
             "model": self._model,
             "stream": False,
@@ -546,20 +937,12 @@ class OllamaStructuredExtractor:
         json_correction = ""
         for attempt in range(1, _EXTRACTION_EMPTY_RETRIES + 1):
             if json_correction:
-                prompt = _qwen_no_think_prefix(self._model) + build_extraction_prompt(
-                    text,
-                    visual_content,
-                    output_language=self._output_language,
-                    max_transcript_chars=self._max_transcript_chars,
-                    transcript_sampling=self._transcript_sampling,
-                    head_tail_start_ratio=self._head_tail_start_ratio,
-                    max_visual_frames=self._max_visual_frames,
-                    max_visual_description_chars=self._max_visual_description_chars,
-                    correction_hint=correction_hint + json_correction,
-                )
                 payload["messages"] = [
                     payload["messages"][0],
-                    {"role": "user", "content": prompt},
+                    {
+                        "role": "user",
+                        "content": prompt + json_correction,
+                    },
                 ]
             if self._chat_fn is not None:
                 response = self._chat_fn(payload)

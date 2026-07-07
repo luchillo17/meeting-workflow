@@ -10,11 +10,17 @@ ollama:
   unload_between_stages: true # free VRAM before loading the next Ollama model
 
 extraction:
-  max_transcript_chars: 12000 # qwen3.5 JSON mode breaks above ~17k prompt chars; head_tail still covers open+close
+  mode: auto # single | map_reduce | auto (map_reduce when transcript exceeds chapter_trigger_chars)
+  chapter_trigger_chars: 12000 # auto mode threshold for map-reduce vs single pass
+  chapter_target_chars: 8000 # per-chapter size target (segment boundaries)
+  chapter_min_chars: 1500 # merge trailing short chapter into previous
+  grounding_check: true # second pass drops extraction items unsupported by chapter text
+  max_transcript_chars: 12000 # single-pass cap; qwen3.5 JSON mode breaks above ~17k prompt chars
   transcript_sampling: head_tail # head = truncate start only; head_tail keeps opening + closing
   head_tail_start_ratio: 0.7 # fraction of max_transcript_chars for the opening (rest = closing)
   max_visual_frames: 8 # cap frames fed to extraction (full set still in visual_content.json)
   max_visual_description_chars: 400 # per-frame cap in extraction prompt
+  visual_time_padding_seconds: 30 # include frames within this many seconds of a chapter window
   retry_on_language_drift: true # re-prompt if output.language is violated
   retry_on_empty_extraction: true # re-prompt when long transcript yields empty lists
 

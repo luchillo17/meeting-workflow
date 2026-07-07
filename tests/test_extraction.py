@@ -15,8 +15,10 @@ from workflow.extraction import (
     extraction_json_schema,
     extraction_schema_keys,
     is_low_value_visual_description,
+    merge_chapter_extractions_deterministic,
     normalize_extraction,
     sample_transcript_text,
+    sanitize_visual_description,
     select_visual_for_extraction,
 )
 from workflow.runner import WorkflowRunner
@@ -90,6 +92,82 @@ def test_select_visual_for_extraction_filters_tiles_and_caps() -> None:
 def test_is_low_value_visual_description() -> None:
     assert is_low_value_visual_description("read.ai meeting notes con círculos CJ")
     assert not is_low_value_visual_description("Pantalla del navegador con parámetros del convenio")
+
+
+def test_sanitize_visual_description_unwraps_json() -> None:
+    raw = '{"type":"whiteboard","description":"Diagrama de convenio con tarifas"}'
+
+    assert sanitize_visual_description(raw) == "Diagrama de convenio con tarifas"
+
+
+def test_merge_chapter_extractions_deterministic_dedupes() -> None:
+    from workflow.transcript_chapters import TranscriptChapter
+
+    chapters = [
+        (
+            TranscriptChapter(1, 0.0, 10.0, "a", "chapters/chapter_001.txt"),
+            {"topic": "A", "key_decisions": ["Acordamos X"], "action_items": []},
+        ),
+        (
+            TranscriptChapter(2, 10.0, 20.0, "b", "chapters/chapter_002.txt"),
+            {"topic": "B", "key_decisions": ["Acordamos X"], "action_items": []},
+        ),
+    ]
+
+    merged = merge_chapter_extractions_deterministic(chapters)
+
+    assert merged["topic"] == "A"
+    assert merged["key_decisions"] == ["Acordamos X"]
+
+
+def test_map_reduce_writes_chapter_artifacts(tmp_path: Path) -> None:
+    segments = [
+        {"start": float(i), "end": float(i + 1), "text": "palabra " * 500} for i in range(12)
+    ]
+    transcript = type(
+        "T",
+        (),
+        {"text": " ".join(s["text"] for s in segments), "segments": segments},
+    )()
+    calls = {"n": 0}
+
+    def fake_chat(_payload: dict) -> dict:
+        calls["n"] += 1
+        return {
+            "message": {
+                "content": json.dumps(
+                    {
+                        "topic": "t",
+                        "key_decisions": [f"d{calls['n']}"],
+                        "action_items": [],
+                        "blockers_risks": [],
+                        "status_updates": [],
+                        "technical_details": [],
+                        "open_questions": [],
+                        "next_steps": [],
+                    }
+                )
+            }
+        }
+
+    extractor = OllamaStructuredExtractor(
+        {
+            "ollama": {"unload_between_stages": False},
+            "extraction": {
+                "mode": "map_reduce",
+                "chapter_trigger_chars": 1_000,
+                "chapter_target_chars": 2_000,
+                "grounding_check": False,
+            },
+        },
+        chat_fn=fake_chat,
+    )
+
+    extractor.build_extraction(transcript, [], "meeting-20260101.mp4", tmp_path)
+
+    assert (tmp_path / "chapters.json").is_file()
+    assert (tmp_path / "extraction" / "chapters" / "chapter_001.json").is_file()
+    assert calls["n"] >= 3
 
 
 def test_extraction_has_language_drift_detects_english_in_spanish_mode() -> None:
