@@ -48,17 +48,44 @@ class WorkflowRunner:
         return results[0]
 
     def run_batch(
-        self, recording_paths: list[Path], *, force: bool = False, extract_only: bool = False
+        self,
+        recording_paths: list[Path],
+        *,
+        force: bool = False,
+        extract_only: bool = False,
+        vision_only: bool = False,
     ) -> list[Path]:
-        jobs = self._prepare_jobs(recording_paths, force=force, extract_only=extract_only)
+        if extract_only and vision_only:
+            raise ValueError("Use only one of extract_only or vision_only")
+        jobs = self._prepare_jobs(
+            recording_paths,
+            force=force,
+            extract_only=extract_only,
+            vision_only=vision_only,
+        )
         if not jobs:
             return []
 
         count = len(jobs)
-        label = "Extraction-only" if extract_only else "Batch Workflow Run"
+        if vision_only:
+            label = "Vision-only"
+        elif extract_only:
+            label = "Extraction-only"
+        else:
+            label = "Batch Workflow Run"
         self.console.print(f"[bold]{label}[/bold] ({count} recording(s))")
 
-        if not extract_only:
+        if vision_only:
+            for job in jobs:
+                job.transcript = load_transcript_for_frames(job.output_dir)
+                job.frame_paths = load_frame_paths(job.output_dir)
+                if not job.frame_paths:
+                    raise FileNotFoundError(
+                        f"No frames for vision-only rerun: {job.output_dir} "
+                        "(run full process or frames first)"
+                    )
+            self._run_vision_stage(jobs, force=True)
+        elif not extract_only:
             self._run_transcript_stage(jobs, force=force)
             self._run_frames_stage(jobs, force=force)
             self._run_vision_stage(jobs, force=force)
@@ -129,7 +156,12 @@ class WorkflowRunner:
             self._unload_adapter(self.vision)
 
     def _prepare_jobs(
-        self, recording_paths: list[Path], *, force: bool, extract_only: bool = False
+        self,
+        recording_paths: list[Path],
+        *,
+        force: bool,
+        extract_only: bool = False,
+        vision_only: bool = False,
     ) -> list[_BatchJob]:
         jobs: list[_BatchJob] = []
         for recording_path in recording_paths:
@@ -140,14 +172,17 @@ class WorkflowRunner:
             output_dir = self.settings.output_dir / slugify(recording.name)
             extraction_file = output_dir / "extraction.json"
 
-            if extraction_file.exists() and not force and not extract_only:
+            if extraction_file.exists() and not force and not extract_only and not vision_only:
                 self.console.print(
                     f"[yellow]Skipping[/yellow] - Extraction already exists at {extraction_file}"
                 )
                 continue
 
             output_dir.mkdir(parents=True, exist_ok=True)
-            invalidate_downstream_artifacts(output_dir, include_visual=force and not extract_only)
+            invalidate_downstream_artifacts(
+                output_dir,
+                include_visual=vision_only or (force and not extract_only),
+            )
             jobs.append(_BatchJob(recording=recording, output_dir=output_dir))
         return jobs
 

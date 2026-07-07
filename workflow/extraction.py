@@ -9,6 +9,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from workflow.extraction_grounding import (
+    apply_deterministic_grounding,
+    dedupe_similar_strings,
+)
 from workflow.ollama_client import OllamaClient, resolve_ollama_settings
 from workflow.output_language import (
     default_meeting_topic,
@@ -66,6 +70,10 @@ Fidelity rules (mandatory):
   transcript gives that breakdown.
 - Ignore meeting notetaker bots and UI labels (e.g. read.ai) as participants.
   Only include people explicitly named in speech.
+- For action_items: when participants state a deadline, week, or calendar date for a task,
+  put it in deadline (ISO date, dd/mm, or spoken phrase like "el lunes"). Leave deadline empty
+  when no timing was stated. Do not invent deadlines.
+- owner is optional: set only when speech explicitly assigns a person to that task.
 
 Use empty lists when a section has no information.
 Return only the JSON object, no markdown or extra text.
@@ -99,6 +107,7 @@ Rules:
 - Combine chapter findings; remove duplicates and near-duplicates.
 - Keep the most specific wording when two items describe the same fact.
 - Do not invent facts that are absent from the chapter extractions or visual captures.
+- Preserve action_item deadlines from chapter extractions when merging duplicates.
 - Use visual captures only for technical_details and topic context.
 
 Return only the JSON object, no markdown or extra text.
@@ -507,6 +516,30 @@ def _dedupe_strings(items: list[str]) -> list[str]:
             continue
         seen.add(key)
         result.append(item.strip())
+    return dedupe_similar_strings(result)
+
+
+def _visual_text_blob(visual_content: list[dict]) -> str:
+    parts: list[str] = []
+    for entry in visual_content:
+        if isinstance(entry, dict):
+            desc = str(entry.get("description", "")).strip()
+            if desc:
+                parts.append(desc)
+    return " ".join(parts)
+
+
+def _apply_list_dedup(raw: dict[str, Any]) -> dict[str, Any]:
+    result = dict(raw)
+    for key in (
+        "key_decisions",
+        "blockers_risks",
+        "status_updates",
+        "technical_details",
+        "open_questions",
+        "next_steps",
+    ):
+        result[key] = _dedupe_strings(_as_string_list(result.get(key)))
     return result
 
 
@@ -706,6 +739,9 @@ class OllamaStructuredExtractor:
         self._chapter_target_chars = int(extraction_cfg.get("chapter_target_chars", 8_000))
         self._chapter_min_chars = int(extraction_cfg.get("chapter_min_chars", 1_500))
         self._grounding_check = bool(extraction_cfg.get("grounding_check", True))
+        self._deterministic_grounding = bool(extraction_cfg.get("deterministic_grounding", True))
+        self._grounding_min_overlap = float(extraction_cfg.get("grounding_min_overlap", 0.34))
+        self._grounding_min_token_length = int(extraction_cfg.get("grounding_min_token_length", 4))
         self._visual_time_padding_seconds = float(
             extraction_cfg.get("visual_time_padding_seconds", 30.0)
         )
@@ -802,7 +838,15 @@ class OllamaStructuredExtractor:
                     "Do not leave all structured lists empty."
                 ),
             )
-        return raw
+        if self._deterministic_grounding and text.strip():
+            raw = apply_deterministic_grounding(
+                raw,
+                transcript_text=text,
+                visual_text=_visual_text_blob(visual_content),
+                min_overlap_ratio=self._grounding_min_overlap,
+                min_token_length=self._grounding_min_token_length,
+            )
+        return _apply_list_dedup(raw)
 
     def _rerun_single_or_merge(
         self,

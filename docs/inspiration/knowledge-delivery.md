@@ -58,7 +58,7 @@ Optional hybrid: local Whisper + vision; cloud pass for extraction (~$0.02–0.1
 
 1. ~~`meeting-workflow publish`~~ — done ([#16](https://github.com/luchillo17/meeting-workflow/pull/16))
 2. ~~`meeting-workflow scan` / `inbox`~~ — done ([#17](https://github.com/luchillo17/meeting-workflow/pull/17), [#18](https://github.com/luchillo17/meeting-workflow/pull/18))
-3. Stronger pilot `eval` + vision filter tuning (phase 2 quality)
+3. ~~Stronger pilot `eval` + vision filter tuning~~ — done ([#19](https://github.com/luchillo17/meeting-workflow/pull/19)); eval strategy in [ADR 0006](../adr/0006-pilot-eval-regression-guards.md)
 4. Optional adapters: Obsidian vault, Notion API
 5. Optional `index` for transcript RAG / MCP search
 
