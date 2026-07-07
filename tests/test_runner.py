@@ -308,3 +308,37 @@ def test_run_batch_reuses_vision_when_present(tmp_path: Path) -> None:
     assert frames.calls == 0
     assert vision.calls == 0
     assert extractor.calls == 1
+
+
+def test_run_batch_extract_only_reruns_extraction_without_upstream(tmp_path: Path) -> None:
+    recording = tmp_path / "meeting.mp4"
+    recording.write_bytes(b"fake-video")
+    settings = Settings(
+        output_dir=tmp_path / "output",
+        config={},
+        ollama_base_url="http://localhost:11434",
+        ollama_text_model="qwen2.5:7b",
+        ollama_vision_model="qwen2.5vl:7b",
+    )
+    transcriber = CountingTranscriber()
+    frames = CountingFrameExtractor()
+    vision = CountingVision()
+    extractor = CountingExtractor()
+    runner = WorkflowRunner(settings, transcriber, frames, vision, extractor)
+
+    out_dir = settings.output_dir / slugify(recording.name)
+    out_dir.mkdir(parents=True)
+    write_json(out_dir / "transcript.json", {"segments": [{"start": 0, "end": 1, "text": "hola"}]})
+    write_json(
+        out_dir / "visual_content.json", [{"timestamp": "00:00:00", "description": "cached"}]
+    )
+    write_json(out_dir / "extraction.json", {"topic": "stale"})
+
+    outputs = runner.run_batch([recording], extract_only=True)
+
+    assert len(outputs) == 1
+    assert transcriber.calls == 0
+    assert frames.calls == 0
+    assert vision.calls == 0
+    assert extractor.calls == 1
+    assert (out_dir / "visual_content.json").exists()

@@ -13,4 +13,4 @@
 
 Epic [#1](https://github.com/luchillo17/meeting-workflow/issues/1) **closed** — v1 delivered.
 
-Post-v1 (folder scan, batch, UI): PRD **Out of Scope** / **Notes**.
+Post-v1 delivered: batch pipeline ([#13](https://github.com/luchillo17/meeting-workflow/pull/13), merged), map-reduce extraction ([#14](https://github.com/luchillo17/meeting-workflow/pull/14)). Remaining: folder scan, UI — PRD **Out of Scope** / **Notes**.
