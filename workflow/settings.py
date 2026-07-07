@@ -47,10 +47,10 @@ class Settings:
                 config.get("ollama", {}).get("base_url", "http://localhost:11434"),
             ),
             ollama_text_model=os.environ.get(
-                "OLLAMA_TEXT_MODEL", config.get("ollama", {}).get("text_model", "qwen2.5:7b")
+                "OLLAMA_TEXT_MODEL", config.get("ollama", {}).get("text_model", "qwen3.5:9b")
             ),
             ollama_vision_model=os.environ.get(
-                "OLLAMA_VISION_MODEL", config.get("ollama", {}).get("vision_model", "qwen2.5vl:7b")
+                "OLLAMA_VISION_MODEL", config.get("ollama", {}).get("vision_model", "qwen3.5:9b")
             ),
         )
 

@@ -73,7 +73,9 @@ class WhisperTranscriber:
             return "int8"
         return self._compute_type
 
-    def transcribe(self, recording: Path, output_dir: Path) -> WhisperTranscript:
+    def transcribe(
+        self, recording: Path, output_dir: Path, *, unload_after: bool = True
+    ) -> WhisperTranscript:
         output_dir.mkdir(parents=True, exist_ok=True)
         audio_path = output_dir / "audio.wav"
         self._extract_audio(recording, audio_path)
@@ -84,7 +86,12 @@ class WhisperTranscriber:
             (output_dir / "transcript.txt").write_text(result.text, encoding="utf-8")
             return result
         finally:
-            self._unload_model()
+            if unload_after:
+                self.unload()
+
+    def unload(self) -> None:
+        """Release Whisper from VRAM (call once after a batch of transcriptions)."""
+        self._unload_model()
 
     def _extract_audio(self, recording: Path, audio_path: Path) -> None:
         cmd = [

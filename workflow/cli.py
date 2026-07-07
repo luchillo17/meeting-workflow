@@ -31,8 +31,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    process = sub.add_parser("process", help="Run workflow on one Meeting Recording")
-    process.add_argument("--file", type=Path, help="Path to .mp4 (overrides RECORDING_PATH)")
+    process = sub.add_parser("process", help="Run workflow on one or more Meeting Recordings")
+    process.add_argument(
+        "--file",
+        type=Path,
+        action="append",
+        dest="files",
+        metavar="PATH",
+        help="Path to .mp4 (repeat for batch; overrides RECORDING_PATH)",
+    )
     process.add_argument("--force", action="store_true", help="Reprocess even if Extraction exists")
 
     frames = sub.add_parser(
@@ -101,7 +108,11 @@ def cmd_setup(args: argparse.Namespace) -> int:
         if not ollama:
             console.print("[red]ollama not found in PATH[/red]")
             return 1
+        seen: set[str] = set()
         for model in (settings.ollama_text_model, settings.ollama_vision_model):
+            if model in seen:
+                continue
+            seen.add(model)
             console.print(f"[cyan]Pulling[/cyan] {model}")
             result = subprocess.run([ollama, "pull", model], check=False)
             if result.returncode != 0:
@@ -125,8 +136,12 @@ def _config_with_env(settings: Settings) -> dict:
 def cmd_process(args: argparse.Namespace) -> int:
     ensure_cuda_dll_paths()
     settings = Settings.load()
-    recording = args.file or Path(os.environ.get("RECORDING_PATH", ""))
-    if not recording or str(recording) == ".":
+    files: list[Path] = list(args.files or [])
+    if not files:
+        recording = Path(os.environ.get("RECORDING_PATH", ""))
+        if recording and str(recording) != ".":
+            files = [recording]
+    if not files:
         print("Error: provide --file or set RECORDING_PATH in .env", file=sys.stderr)
         return 1
 
@@ -140,7 +155,7 @@ def cmd_process(args: argparse.Namespace) -> int:
         OllamaStructuredExtractor(config),
     )
     try:
-        runner.run(recording, force=args.force)
+        runner.run_batch(files, force=args.force)
     except (FileNotFoundError, RuntimeError, ValueError, OSError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

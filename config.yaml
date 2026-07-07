@@ -2,14 +2,21 @@
 
 ollama:
   base_url: "http://localhost:11434"
-  text_model: "qwen2.5:14b" # quality preset; use qwen2.5:7b for faster runs
-  vision_model: "qwen2.5vl:7b"
+  # Qwen 3.5 is natively multimodal — same tag for text + vision (replaces qwen2.5 + qwen2.5vl)
+  text_model: "qwen3.5:9b" # fits fully in 16 GB VRAM (Q4); 27b spills to RAM
+  vision_model: "qwen3.5:9b"
   timeout_seconds: 600
   keep_alive: "10m" # keep vision model loaded across frames in a stage
   unload_between_stages: true # free VRAM before loading the next Ollama model
 
 extraction:
-  max_transcript_chars: 48000 # 0 = no limit; raise if long meetings lose tail context
+  max_transcript_chars: 12000 # qwen3.5 JSON mode breaks above ~17k prompt chars; head_tail still covers open+close
+  transcript_sampling: head_tail # head = truncate start only; head_tail keeps opening + closing
+  head_tail_start_ratio: 0.7 # fraction of max_transcript_chars for the opening (rest = closing)
+  max_visual_frames: 8 # cap frames fed to extraction (full set still in visual_content.json)
+  max_visual_description_chars: 400 # per-frame cap in extraction prompt
+  retry_on_language_drift: true # re-prompt if output.language is violated
+  retry_on_empty_extraction: true # re-prompt when long transcript yields empty lists
 
 whisper:
   model: "large-v3" # use "medium" for faster pilot runs

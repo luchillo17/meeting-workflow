@@ -42,6 +42,9 @@ class OllamaClient:
         self, payload: dict[str, Any], *, keep_alive: str | int | None = None
     ) -> dict[str, Any]:
         body = dict(payload)
+        # Thinking models (e.g. qwen3.5) can burn num_predict on hidden reasoning and
+        # return empty content unless thinking is disabled at the top level.
+        body.setdefault("think", False)
         if keep_alive is not None:
             body["keep_alive"] = keep_alive
         elif "keep_alive" not in body:

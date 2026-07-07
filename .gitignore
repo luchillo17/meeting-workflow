@@ -27,6 +27,7 @@ build/
 # Workflow artifacts (never commit meeting content)
 output/
 staging/
+.compare-baseline/
 *.db
 manifest.db
 

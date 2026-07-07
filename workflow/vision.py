@@ -4,19 +4,28 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import re
 from collections.abc import Callable
 from pathlib import Path
 
+from workflow.extraction import is_low_value_visual_description
 from workflow.ollama_client import OllamaClient, resolve_ollama_settings
 from workflow.output_language import language_display_name, resolve_output_language
 from workflow.utils import invalidate_downstream_artifacts, write_json
 
+logger = logging.getLogger(__name__)
+
+_VISION_EMPTY_RETRIES = 2
+
 _VISION_PROMPT = (
     "Describe the visual content of this meeting image. "
-    "Ignore meeting notetaker bots and UI chrome (e.g. read.ai, Otter, Fireflies labels) — "
-    "describe only human-shared content when present. "
-    'Respond with JSON only: {{"type":"whiteboard|diagram|slide|other","description":"..."}} '
+    "Ignore meeting notetaker bots and UI chrome (e.g. read.ai, Otter, Fireflies labels). "
+    "If the image shows ONLY participant tiles, avatars, or a black waiting screen with no "
+    "shared content, respond with: "
+    '{{"type":"skip","description":""}}. '
+    "Otherwise describe only human-shared content: slides, screen shares, whiteboards, diagrams. "
+    'Respond with JSON only: {{"type":"whiteboard|diagram|slide|other|skip","description":"..."}} '
     "Write the description in {output_language}."
 )
 
@@ -67,12 +76,14 @@ class OllamaVisionAnalyzer:
         ollama_cfg = config.get("ollama", {})
         self._settings = resolve_ollama_settings(config)
         self._client = OllamaClient(self._settings)
-        self._model = ollama_cfg.get("vision_model", "qwen2.5vl:7b")
+        self._model = ollama_cfg.get("vision_model", "qwen3.5:9b")
         self._output_language = resolve_output_language(config)
         self._chat_fn = chat_fn
         self._unload = unload_fn or self._client.unload
 
-    def analyze(self, frame_paths: list[Path], output_dir: Path) -> list[dict]:
+    def analyze(
+        self, frame_paths: list[Path], output_dir: Path, *, unload_after: bool = True
+    ) -> list[dict]:
         invalidate_downstream_artifacts(output_dir)
         timestamps = self._load_timestamps(output_dir)
         visual: list[dict] = []
@@ -81,6 +92,10 @@ class OllamaVisionAnalyzer:
                 if not frame_path.is_file():
                     continue
                 frame_type, description = self._describe_frame(frame_path)
+                if frame_type == "skip" or not description.strip():
+                    continue
+                if is_low_value_visual_description(description):
+                    continue
                 seconds = timestamps.get(
                     str(frame_path), timestamps.get(frame_path.as_posix(), 0.0)
                 )
@@ -92,10 +107,15 @@ class OllamaVisionAnalyzer:
                     }
                 )
         finally:
-            if self._settings.unload_between_stages:
-                self._unload(self._model)
+            if unload_after and self._settings.unload_between_stages:
+                self.unload()
         write_json(output_dir / "visual_content.json", visual)
         return visual
+
+    def unload(self) -> None:
+        """Release the vision model from VRAM."""
+        if self._settings.unload_between_stages:
+            self._unload(self._model)
 
     def _describe_frame(self, frame_path: Path) -> tuple[str, str]:
         encoded = base64.b64encode(frame_path.read_bytes()).decode("ascii")
@@ -110,13 +130,25 @@ class OllamaVisionAnalyzer:
                 }
             ],
         }
-        response = (
-            self._chat_fn(payload) if self._chat_fn is not None else self._client.chat(payload)
-        )
-        content = response.get("message", {}).get("content", "")
-        if not content:
-            raise RuntimeError(f"Empty vision response for {frame_path.name}")
-        return _parse_vision_response(content)
+        if "qwen3" in self._model.lower():
+            payload["messages"][0]["content"] = "/no_think\n" + str(
+                payload["messages"][0]["content"]
+            )
+        for attempt in range(1, _VISION_EMPTY_RETRIES + 1):
+            response = (
+                self._chat_fn(payload) if self._chat_fn is not None else self._client.chat(payload)
+            )
+            content = response.get("message", {}).get("content", "")
+            if content.strip():
+                return _parse_vision_response(content)
+            logger.warning(
+                "Empty vision response for %s (attempt %d/%d)",
+                frame_path.name,
+                attempt,
+                _VISION_EMPTY_RETRIES,
+            )
+        logger.warning("Skipping frame after empty vision responses: %s", frame_path.name)
+        return "skip", ""
 
     @staticmethod
     def _load_timestamps(output_dir: Path) -> dict[str, float]:
