@@ -61,9 +61,12 @@ def write_json(path: Path, data: dict | list) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def invalidate_downstream_artifacts(output_dir: Path) -> None:
+def invalidate_downstream_artifacts(output_dir: Path, *, include_visual: bool = True) -> None:
     """Remove artifacts that depend on frames/vision so failed reruns cannot leave stale data."""
-    for name in ("visual_content.json", "extraction.json", "summary.md"):
+    names = ["extraction.json", "summary.md"]
+    if include_visual:
+        names.insert(0, "visual_content.json")
+    for name in names:
         (output_dir / name).unlink(missing_ok=True)
 
 

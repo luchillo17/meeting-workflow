@@ -118,6 +118,25 @@ def test_whisper_model_unloaded_after_transcription(tmp_path: Path) -> None:
     assert len(created_models) == 1
 
 
+def test_transcribe_keeps_model_loaded_when_unload_after_false(tmp_path: Path) -> None:
+    recording = tmp_path / "meeting.mp4"
+    recording.write_bytes(b"fake-video")
+    created_models: list[FakeWhisperModel] = []
+
+    def factory(*_args, **_kwargs) -> FakeWhisperModel:
+        model = FakeWhisperModel()
+        created_models.append(model)
+        return model
+
+    transcriber = _transcriber(model_factory=factory)
+    transcriber.transcribe(recording, tmp_path / "out", unload_after=False)
+
+    assert transcriber._model is not None
+    assert len(created_models) == 1
+    transcriber.unload()
+    assert transcriber._model is None
+
+
 def test_build_whisper_transcribe_options_defaults() -> None:
     options = build_whisper_transcribe_options({"whisper": {"language": "es"}})
     assert options["language"] == "es"

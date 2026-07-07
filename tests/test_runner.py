@@ -22,13 +22,21 @@ class FakeTranscript:
 class CountingTranscriber:
     def __init__(self) -> None:
         self.calls = 0
+        self.unloads = 0
 
-    def transcribe(self, recording: Path, output_dir: Path) -> FakeTranscript:
+    def transcribe(
+        self, recording: Path, output_dir: Path, *, unload_after: bool = True
+    ) -> FakeTranscript:
         self.calls += 1
+        if unload_after and hasattr(self, "unload"):
+            self.unload()
         result = FakeTranscript(segments=[{"start": 0, "end": 1, "text": "test"}], text="test")
         write_json(output_dir / "transcript.json", {"segments": result.segments})
         (output_dir / "transcript.txt").write_text("test", encoding="utf-8")
         return result
+
+    def unload(self) -> None:
+        self.unloads += 1
 
 
 class CountingFrameExtractor:
@@ -47,22 +55,39 @@ class CountingFrameExtractor:
 class CountingVision:
     def __init__(self) -> None:
         self.calls = 0
+        self.unloads = 0
 
-    def analyze(self, frame_paths: list[Path], output_dir: Path) -> list[dict]:
+    def analyze(
+        self, frame_paths: list[Path], output_dir: Path, *, unload_after: bool = True
+    ) -> list[dict]:
         self.calls += 1
+        if unload_after:
+            self.unload()
         visual = [{"timestamp": "00:00:00", "type": "slide", "description": "Test slide"}]
         write_json(output_dir / "visual_content.json", visual)
         return visual
+
+    def unload(self) -> None:
+        self.unloads += 1
 
 
 class CountingExtractor:
     def __init__(self) -> None:
         self.calls = 0
+        self.unloads = 0
 
     def build_extraction(
-        self, transcript, visual_content, recording_name: str, output_dir: Path
+        self,
+        transcript,
+        visual_content,
+        recording_name: str,
+        output_dir: Path,
+        *,
+        unload_after: bool = True,
     ) -> dict:
         self.calls += 1
+        if unload_after:
+            self.unload()
         extraction = {
             "meeting_date": "2026-06-19",
             "topic": "Test",
@@ -78,6 +103,9 @@ class CountingExtractor:
         write_json(output_dir / "extraction.json", extraction)
         (output_dir / "summary.md").write_text(render_summary(extraction), encoding="utf-8")
         return extraction
+
+    def unload(self) -> None:
+        self.unloads += 1
 
 
 def _runner(
@@ -155,3 +183,128 @@ def test_slugify_and_meeting_date_from_filename() -> None:
 
     assert parse_meeting_date(name) == "2026-06-19"
     assert "20260619" in slugify(name)
+
+
+def test_run_batch_processes_each_stage_once_per_recording(tmp_path: Path) -> None:
+    recordings = [
+        tmp_path / "meeting-a.mp4",
+        tmp_path / "meeting-b.mp4",
+    ]
+    for recording in recordings:
+        recording.write_bytes(b"fake-video")
+
+    settings = Settings(
+        output_dir=tmp_path / "output",
+        config={},
+        ollama_base_url="http://localhost:11434",
+        ollama_text_model="qwen2.5:7b",
+        ollama_vision_model="qwen2.5vl:7b",
+    )
+    transcriber = CountingTranscriber()
+    frames = CountingFrameExtractor()
+    vision = CountingVision()
+    extractor = CountingExtractor()
+    runner = WorkflowRunner(settings, transcriber, frames, vision, extractor)
+
+    outputs = runner.run_batch(recordings)
+
+    assert len(outputs) == 2
+    assert transcriber.calls == 2
+    assert frames.calls == 2
+    assert vision.calls == 2
+    assert extractor.calls == 2
+    assert transcriber.unloads == 1
+    assert vision.unloads == 1
+    assert extractor.unloads == 1
+    for out in outputs:
+        assert (out / "extraction.json").exists()
+
+
+def test_run_batch_skips_completed_extractions(tmp_path: Path) -> None:
+    recording = tmp_path / "meeting.mp4"
+    recording.write_bytes(b"fake-video")
+    runner, transcriber, settings = _runner(tmp_path, recording)
+    out_dir = settings.output_dir / slugify(recording.name)
+    out_dir.mkdir(parents=True)
+    write_json(out_dir / "extraction.json", {"topic": "existing"})
+
+    results = runner.run_batch([recording])
+
+    assert results == []
+    assert transcriber.calls == 0
+
+
+def test_run_batch_reuses_transcript_and_frames_when_present(tmp_path: Path) -> None:
+    recording = tmp_path / "meeting.mp4"
+    recording.write_bytes(b"fake-video")
+    settings = Settings(
+        output_dir=tmp_path / "output",
+        config={},
+        ollama_base_url="http://localhost:11434",
+        ollama_text_model="qwen2.5:7b",
+        ollama_vision_model="qwen2.5vl:7b",
+    )
+    transcriber = CountingTranscriber()
+    frames = CountingFrameExtractor()
+    vision = CountingVision()
+    extractor = CountingExtractor()
+    runner = WorkflowRunner(settings, transcriber, frames, vision, extractor)
+
+    out_dir = settings.output_dir / slugify(recording.name)
+    frames_dir = out_dir / "frames"
+    frames_dir.mkdir(parents=True)
+    frame = frames_dir / "frame_0001.jpg"
+    frame.write_bytes(b"x")
+    write_json(out_dir / "transcript.json", {"segments": [{"start": 0, "end": 1, "text": "hola"}]})
+    write_json(
+        out_dir / "frames.json",
+        [{"timestamp": 0.0, "path": str(frame), "trigger": "scene"}],
+    )
+
+    outputs = runner.run_batch([recording])
+
+    assert len(outputs) == 1
+    assert transcriber.calls == 0
+    assert frames.calls == 0
+    assert vision.calls == 1
+    assert extractor.calls == 1
+
+
+def test_run_batch_reuses_vision_when_present(tmp_path: Path) -> None:
+    recording = tmp_path / "meeting.mp4"
+    recording.write_bytes(b"fake-video")
+    settings = Settings(
+        output_dir=tmp_path / "output",
+        config={},
+        ollama_base_url="http://localhost:11434",
+        ollama_text_model="qwen2.5:7b",
+        ollama_vision_model="qwen2.5vl:7b",
+    )
+    transcriber = CountingTranscriber()
+    frames = CountingFrameExtractor()
+    vision = CountingVision()
+    extractor = CountingExtractor()
+    runner = WorkflowRunner(settings, transcriber, frames, vision, extractor)
+
+    out_dir = settings.output_dir / slugify(recording.name)
+    frames_dir = out_dir / "frames"
+    frames_dir.mkdir(parents=True)
+    frame = frames_dir / "frame_0001.jpg"
+    frame.write_bytes(b"x")
+    write_json(out_dir / "transcript.json", {"segments": [{"start": 0, "end": 1, "text": "hola"}]})
+    write_json(
+        out_dir / "frames.json",
+        [{"timestamp": 0.0, "path": str(frame), "trigger": "scene"}],
+    )
+    write_json(
+        out_dir / "visual_content.json",
+        [{"timestamp": "00:00:00", "type": "slide", "description": "cached"}],
+    )
+
+    outputs = runner.run_batch([recording])
+
+    assert len(outputs) == 1
+    assert transcriber.calls == 0
+    assert frames.calls == 0
+    assert vision.calls == 0
+    assert extractor.calls == 1

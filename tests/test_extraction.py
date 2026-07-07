@@ -10,9 +10,14 @@ import pytest
 from workflow.extraction import (
     OllamaStructuredExtractor,
     build_extraction_prompt,
+    extraction_has_language_drift,
+    extraction_is_structurally_empty,
     extraction_json_schema,
     extraction_schema_keys,
+    is_low_value_visual_description,
     normalize_extraction,
+    sample_transcript_text,
+    select_visual_for_extraction,
 )
 from workflow.runner import WorkflowRunner
 from workflow.settings import Settings
@@ -44,6 +49,80 @@ def test_build_extraction_prompt_includes_transcript_and_visual() -> None:
     assert "Hablamos del tablero." in prompt
     assert "Diagrama" in prompt
     assert "00:01:00" in prompt
+    assert "Source priority" in prompt
+
+
+def test_sample_transcript_text_head_tail_preserves_ending() -> None:
+    text = ("A" * 5_000) + ("B" * 5_000)
+    sampled = sample_transcript_text(text, 6_000, sampling="head_tail", head_ratio=0.7)
+
+    assert sampled.startswith("A")
+    assert sampled.endswith("B")
+    assert "middle omitted" in sampled
+
+
+def test_select_visual_for_extraction_filters_tiles_and_caps() -> None:
+    visual = [
+        {
+            "timestamp": "00:00:02",
+            "type": "other",
+            "description": "La imagen muestra un fondo negro con una burbuja circular read.ai",
+        },
+        {
+            "timestamp": "00:08:37",
+            "type": "whiteboard",
+            "description": "Whiteboard con parámetros del servicio y convenio " + ("x" * 500),
+        },
+        {
+            "timestamp": "00:20:51",
+            "type": "whiteboard",
+            "description": "Diagrama de convenio con tarifas",
+        },
+    ]
+
+    selected = select_visual_for_extraction(visual, max_frames=1, max_description_chars=50)
+
+    assert len(selected) == 1
+    assert "convenio" in selected[0]["description"].lower()
+    assert len(selected[0]["description"]) <= 53
+
+
+def test_is_low_value_visual_description() -> None:
+    assert is_low_value_visual_description("read.ai meeting notes con círculos CJ")
+    assert not is_low_value_visual_description("Pantalla del navegador con parámetros del convenio")
+
+
+def test_extraction_has_language_drift_detects_english_in_spanish_mode() -> None:
+    raw = {
+        "topic": "Patient Portal",
+        "key_decisions": ["The portal includes Home and Personal Information sections"],
+        "action_items": [],
+        "blockers_risks": [],
+        "status_updates": [],
+        "technical_details": [],
+        "open_questions": [],
+        "next_steps": [],
+    }
+
+    assert extraction_has_language_drift(raw, output_language="es")
+
+
+def test_extraction_is_structurally_empty() -> None:
+    assert extraction_is_structurally_empty(
+        {
+            "topic": "Tema",
+            "key_decisions": [],
+            "action_items": [],
+            "blockers_risks": [],
+            "status_updates": [],
+            "technical_details": [],
+            "open_questions": [],
+            "next_steps": [],
+        }
+    )
+    assert not extraction_is_structurally_empty(
+        {"topic": "Tema", "key_decisions": ["Acordamos el piloto"]}
+    )
 
 
 def test_normalize_extraction_fills_schema_and_meeting_date() -> None:
@@ -132,11 +211,11 @@ def test_ollama_extractor_writes_extraction_and_summary(tmp_path: Path) -> None:
 def test_ollama_extractor_raises_on_invalid_json(tmp_path: Path) -> None:
     transcript = type("T", (), {"text": "hola", "segments": []})()
     extractor = OllamaStructuredExtractor(
-        {"ollama": {}},
+        {"ollama": {"unload_between_stages": False}},
         chat_fn=lambda *_a, **_k: {"message": {"content": "no json here"}},
     )
 
-    with pytest.raises(ValueError, match="valid extraction JSON"):
+    with pytest.raises(RuntimeError, match="Empty extraction response"):
         extractor.build_extraction(transcript, [], "meeting.mp4", tmp_path)
 
 
@@ -163,7 +242,9 @@ def test_ollama_extractor_requests_json_schema_format(tmp_path: Path) -> None:
             }
         }
 
-    extractor = OllamaStructuredExtractor({"ollama": {}}, chat_fn=fake_chat)
+    extractor = OllamaStructuredExtractor(
+        {"ollama": {"unload_between_stages": False}}, chat_fn=fake_chat
+    )
     extractor.build_extraction(transcript, [], "meeting.mp4", tmp_path)
 
     assert captured.get("format", {}).get("required") == list(extraction_json_schema()["required"])
@@ -182,7 +263,7 @@ def test_runner_integration_with_ollama_extractor(tmp_path: Path) -> None:
     )
 
     class FakeTranscriber:
-        def transcribe(self, rec: Path, output_dir: Path) -> object:
+        def transcribe(self, rec: Path, output_dir: Path, *, unload_after: bool = True) -> object:
             result = type("T", (), {"segments": [], "text": "Acordamos el piloto."})()
             write_json(output_dir / "transcript.json", {"segments": []})
             (output_dir / "transcript.txt").write_text("Acordamos el piloto.", encoding="utf-8")
@@ -201,7 +282,9 @@ def test_runner_integration_with_ollama_extractor(tmp_path: Path) -> None:
             return [path]
 
     class FakeVision:
-        def analyze(self, frame_paths: list[Path], output_dir: Path) -> list[dict]:
+        def analyze(
+            self, frame_paths: list[Path], output_dir: Path, *, unload_after: bool = True
+        ) -> list[dict]:
             visual = [{"timestamp": "00:00:01", "type": "slide", "description": "Agenda"}]
             write_json(output_dir / "visual_content.json", visual)
             return visual

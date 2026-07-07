@@ -12,7 +12,9 @@ class TranscriptResult(Protocol):
 
 
 class Transcriber(Protocol):
-    def transcribe(self, recording: Path, output_dir: Path) -> TranscriptResult: ...
+    def transcribe(
+        self, recording: Path, output_dir: Path, *, unload_after: bool = True
+    ) -> TranscriptResult: ...
 
 
 class FrameExtractor(Protocol):
@@ -22,7 +24,9 @@ class FrameExtractor(Protocol):
 
 
 class VisionAnalyzer(Protocol):
-    def analyze(self, frame_paths: list[Path], output_dir: Path) -> list[dict]: ...
+    def analyze(
+        self, frame_paths: list[Path], output_dir: Path, *, unload_after: bool = True
+    ) -> list[dict]: ...
 
 
 class Extractor(Protocol):
@@ -32,4 +36,6 @@ class Extractor(Protocol):
         visual_content: list[dict],
         recording_name: str,
         output_dir: Path,
+        *,
+        unload_after: bool = True,
     ) -> dict: ...

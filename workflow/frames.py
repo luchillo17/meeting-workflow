@@ -47,6 +47,27 @@ def load_transcript_for_frames(output_dir: Path) -> FrameTranscript:
     return FrameTranscript(segments=valid_segments, text=text)
 
 
+def load_frame_paths(output_dir: Path) -> list[Path]:
+    """Load frame paths from an existing frames.json bundle."""
+    meta_path = output_dir / "frames.json"
+    if not meta_path.is_file():
+        return []
+    try:
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(data, list):
+        return []
+    paths: list[Path] = []
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        path = entry.get("path")
+        if path:
+            paths.append(Path(str(path)))
+    return paths
+
+
 def frames_bundle_valid(output_dir: Path) -> bool:
     """True when frames.json exists and every listed JPEG is present."""
     meta_path = output_dir / "frames.json"
