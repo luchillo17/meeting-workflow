@@ -6,7 +6,9 @@ faster-whisper + Ollama. ~$0 API cost. **Windows, Linux, macOS**.
 
 ## Status
 
-**v1 feature-complete** on `main`. Batch + Qwen 3.5 ([#13](https://github.com/luchillo17/meeting-workflow/pull/13)), map-reduce extraction ([#14](https://github.com/luchillo17/meeting-workflow/pull/14)), pilot validation ([#15](https://github.com/luchillo17/meeting-workflow/pull/15)) — all merged. Whisper anti-hallucination: [PR #10](https://github.com/luchillo17/meeting-workflow/pull/10).
+**v1 feature-complete** on `main`. Batch + Qwen 3.5 ([#13](https://github.com/luchillo17/meeting-workflow/pull/13)), map-reduce extraction ([#14](https://github.com/luchillo17/meeting-workflow/pull/14)), pilot validation ([#15](https://github.com/luchillo17/meeting-workflow/pull/15)), publish ([#16](https://github.com/luchillo17/meeting-workflow/pull/16)), folder scan ([#17](https://github.com/luchillo17/meeting-workflow/pull/17)), inbox ([#18](https://github.com/luchillo17/meeting-workflow/pull/18)) — all merged. Whisper anti-hallucination: [PR #10](https://github.com/luchillo17/meeting-workflow/pull/10).
+
+**Phase 2 (quality):** stronger pilot `eval` guards (chapters, vision frames, transcript grounding, action-item shape) and vision filter tuning to keep slide/diagram content over tile-only UI noise.
 
 ## Pilot
 
@@ -25,6 +27,7 @@ uv run meeting-workflow process --extract-only --file meeting-a.mp4
 
 # Regression spot-checks on pilot output folders
 uv run meeting-workflow eval
+uv run meeting-workflow inbox --eval   # fail inbox if eval fails after processing
 
 # Scan watch folders for pending recordings (set WATCH_FOLDERS or ONEDRIVE_ROOT in .env)
 uv run meeting-workflow scan
@@ -63,6 +66,7 @@ Platform + GPU: **[docs/SETUP.md](docs/SETUP.md)**
 | `uv run meeting-workflow process --force`        | Reprocess even if Extraction exists           |
 | `uv run meeting-workflow process --extract-only` | Re-run extraction; reuse transcript + vision  |
 | `uv run meeting-workflow eval`                   | Pilot regression spot-checks on output dirs   |
+| `uv run meeting-workflow inbox --eval`           | Inbox + fail if pilot eval fails              |
 | `uv run meeting-workflow publish --all`          | Publish briefs to `docs/meetings/`            |
 | `uv run meeting-workflow publish --new`          | Publish only extractions not yet in docs      |
 | `uv run meeting-workflow publish --dir PATH`     | Publish one extraction folder                 |
@@ -94,6 +98,18 @@ docs/meetings/           # published agent briefs (no full transcripts)
   index.md
   <date>-<slug>.md
 ```
+
+### Pilot eval (`meeting-workflow eval`)
+
+Regression guards on four pilot folders under `OUTPUT_DIR` — not golden-file accuracy. When transcript length exceeds a per-meeting threshold, checks include:
+
+- Minimum decisions, action items (each with non-empty `task`), topic length
+- Map-reduce: `chapters.json` count (long meetings)
+- Vision: `visual_content.json` frame count after low-value filter
+- Domain terms in extraction blob (`must_contain`, `transcript_terms` when term appears in transcript)
+- Rejects SaaS bot artifacts (`read.ai`, etc.)
+
+Tune thresholds in `workflow/extraction_eval.py` (`PILOT_MEETING_CHECKS`). Vision filter signals: `workflow/extraction.py` (`SHARED_CONTENT_SIGNALS`, `is_low_value_visual_description`).
 
 ## Development
 

@@ -137,6 +137,34 @@ def test_analyze_skips_low_value_participant_tile_descriptions(tmp_path: Path) -
     assert saved == []
 
 
+def test_analyze_keeps_tile_description_when_shared_content_present(tmp_path: Path) -> None:
+    frames_dir = tmp_path / "frames"
+    frames_dir.mkdir()
+    frame = frames_dir / "frame_0001.jpg"
+    frame.write_bytes(b"jpeg-data")
+    (tmp_path / "frames.json").write_text(
+        json.dumps([{"timestamp": 1.0, "path": str(frame), "trigger": "scene"}]),
+        encoding="utf-8",
+    )
+
+    analyzer = OllamaVisionAnalyzer(
+        {"ollama": {"unload_between_stages": False}},
+        chat_fn=lambda _payload: {
+            "message": {
+                "content": (
+                    '{"type":"slide","description":'
+                    '"Participantes visibles mientras se comparte pantalla con diseño Figma."}'
+                )
+            }
+        },
+    )
+
+    result = analyzer.analyze([frame], tmp_path)
+
+    assert len(result) == 1
+    assert "figma" in result[0]["description"].lower()
+
+
 def test_analyze_skips_frame_after_empty_vision_responses(tmp_path: Path) -> None:
     frames_dir = tmp_path / "frames"
     frames_dir.mkdir()

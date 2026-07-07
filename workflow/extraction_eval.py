@@ -6,36 +6,106 @@ import json
 from pathlib import Path
 from typing import Any
 
-# Slug prefix checks for pilot meetings (no golden files — substring/count guards).
+# Pilot meetings: count/structure guards + domain terms (not golden-file accuracy).
 PILOT_MEETING_CHECKS: tuple[dict[str, Any], ...] = (
     {
         "slug_prefix": "funcionalidad-ipss",
         "min_transcript_chars": 20_000,
-        "min_decisions": 1,
-        "min_action_items": 1,
+        "min_decisions": 2,
+        "min_action_items": 3,
+        "min_chapters": 4,
+        "min_visual_frames": 2,
         "must_contain": ("convenio",),
+        "transcript_terms": ("convenio", "ips"),
+        "must_not_contain": ("read.ai", "otter.ai", "fireflies"),
     },
     {
         "slug_prefix": "revisión-aspectos-relevantes-poc",
         "min_transcript_chars": 40_000,
         "min_decisions": 2,
-        "min_action_items": 1,
+        "min_action_items": 2,
+        "min_chapters": 4,
+        "min_visual_frames": 3,
         "must_contain": ("portal",),
+        "transcript_terms": ("portal",),
+        "must_not_contain": ("read.ai",),
     },
     {
         "slug_prefix": "revision-avances-mvp",
         "min_transcript_chars": 40_000,
         "min_decisions": 2,
-        "min_action_items": 1,
+        "min_action_items": 2,
+        "min_chapters": 4,
+        "min_visual_frames": 3,
+        "transcript_terms": ("mvp",),
+        "must_not_contain": ("read.ai",),
     },
     {
         "slug_prefix": "revision-formato-hc-laboral",
         "min_transcript_chars": 30_000,
         "min_decisions": 1,
-        "min_action_items": 1,
+        "min_action_items": 2,
+        "min_chapters": 4,
+        "min_visual_frames": 1,
         "must_contain": ("historia",),
+        "transcript_terms": ("historia", "laboral"),
+        "must_not_contain": ("read.ai",),
     },
 )
+
+_CHAPTER_TRIGGER_CHARS = 12_000
+
+
+def load_transcript_text(output_dir: Path) -> str:
+    transcript_path = output_dir / "transcript.txt"
+    if transcript_path.is_file():
+        return transcript_path.read_text(encoding="utf-8")
+    json_path = output_dir / "transcript.json"
+    if not json_path.is_file():
+        return ""
+    try:
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return ""
+    if isinstance(data, dict):
+        segments = data.get("segments") or []
+    elif isinstance(data, list):
+        segments = data
+    else:
+        return ""
+    parts: list[str] = []
+    for segment in segments:
+        if isinstance(segment, dict):
+            text = str(segment.get("text", "")).strip()
+            if text:
+                parts.append(text)
+    return " ".join(parts)
+
+
+def load_transcript_chars(output_dir: Path) -> int:
+    return len(load_transcript_text(output_dir))
+
+
+def load_chapter_count(output_dir: Path) -> int:
+    chapters_path = output_dir / "chapters.json"
+    if not chapters_path.is_file():
+        return 0
+    try:
+        data = json.loads(chapters_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return 0
+    return len(data) if isinstance(data, list) else 0
+
+
+def load_visual_frame_count(output_dir: Path) -> int:
+    visual_path = output_dir / "visual_content.json"
+    if not visual_path.is_file():
+        return 0
+    try:
+        data = json.loads(visual_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return 0
+    return len(data) if isinstance(data, list) else 0
 
 
 def _extraction_blob(extraction: dict[str, Any]) -> str:
@@ -60,13 +130,18 @@ def evaluate_extraction(
     *,
     checks: dict[str, Any],
     transcript_chars: int = 0,
+    transcript_text: str = "",
+    chapter_count: int = 0,
+    visual_frame_count: int = 0,
 ) -> list[str]:
     """Return human-readable failure messages; empty list means all checks passed."""
     failures: list[str] = []
     blob = _extraction_blob(extraction)
-
+    topic = str(extraction.get("topic", "")).strip()
     min_chars = int(checks.get("min_transcript_chars", 0))
-    if min_chars and transcript_chars >= min_chars:
+    long_meeting = bool(min_chars and transcript_chars >= min_chars)
+
+    if long_meeting:
         min_decisions = int(checks.get("min_decisions", 0))
         decisions = extraction.get("key_decisions") or []
         if min_decisions and len(decisions) < min_decisions:
@@ -77,6 +152,28 @@ def evaluate_extraction(
         actions = extraction.get("action_items") or []
         if min_actions and len(actions) < min_actions:
             failures.append(f"expected at least {min_actions} action_items, got {len(actions)}")
+        empty_tasks = sum(
+            1
+            for item in actions
+            if isinstance(item, dict) and not str(item.get("task", "")).strip()
+        )
+        if actions and empty_tasks:
+            failures.append(f"expected action_items with tasks, got {empty_tasks} empty task(s)")
+
+        min_chapters = int(checks.get("min_chapters", 0))
+        if min_chapters and transcript_chars >= _CHAPTER_TRIGGER_CHARS:
+            if chapter_count < min_chapters:
+                failures.append(f"expected at least {min_chapters} chapters, got {chapter_count}")
+
+        min_visual = int(checks.get("min_visual_frames", 0))
+        if min_visual and visual_frame_count < min_visual:
+            failures.append(
+                f"expected at least {min_visual} visual_content frames, got {visual_frame_count}"
+            )
+
+    min_topic_len = int(checks.get("min_topic_len", 8))
+    if long_meeting and len(topic) < min_topic_len:
+        failures.append(f"topic too short ({len(topic)} chars)")
 
     for needle in checks.get("must_contain", ()):
         if str(needle).lower() not in blob:
@@ -86,12 +183,17 @@ def evaluate_extraction(
         if str(needle).lower() in blob:
             failures.append(f"found forbidden term: {needle!r}")
 
+    transcript_lower = transcript_text.lower()
+    for needle in checks.get("transcript_terms", ()):
+        term = str(needle).lower()
+        if term in transcript_lower and term not in blob:
+            failures.append(f"transcript mentions {needle!r} but extraction does not")
+
     return failures
 
 
 def evaluate_output_dir(output_dir: Path, *, checks: dict[str, Any]) -> list[str]:
     extraction_path = output_dir / "extraction.json"
-    transcript_path = output_dir / "transcript.txt"
     if not extraction_path.is_file():
         return ["missing extraction.json"]
     try:
@@ -101,11 +203,15 @@ def evaluate_output_dir(output_dir: Path, *, checks: dict[str, Any]) -> list[str
     if not isinstance(extraction, dict):
         return ["extraction.json root must be an object"]
 
-    transcript_chars = 0
-    if transcript_path.is_file():
-        transcript_chars = len(transcript_path.read_text(encoding="utf-8"))
-
-    return evaluate_extraction(extraction, checks=checks, transcript_chars=transcript_chars)
+    transcript_text = load_transcript_text(output_dir)
+    return evaluate_extraction(
+        extraction,
+        checks=checks,
+        transcript_chars=len(transcript_text),
+        transcript_text=transcript_text,
+        chapter_count=load_chapter_count(output_dir),
+        visual_frame_count=load_visual_frame_count(output_dir),
+    )
 
 
 def evaluate_pilot_outputs(output_root: Path) -> list[str]:

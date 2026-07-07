@@ -138,11 +138,44 @@ _SYSTEM_PROMPT = (
 
 _TYPE_PRIORITY = {"whiteboard": 4, "diagram": 3, "slide": 2, "other": 1}
 
-_LOW_VALUE_VISUAL_RE = re.compile(
-    r"(?i)(read\.ai|meeting notes|otter|fireflies|"
-    r"c[ií]rculos?.*(iniciales|siglas|colores)|participantes visibles|"
-    r"fondo negro.*foto circular|burbuja circular|avatar y nombre asociado)"
+STRUCTURED_VISION_TYPES = frozenset({"whiteboard", "diagram", "slide"})
+
+SHARED_CONTENT_SIGNALS = (
+    "whiteboard",
+    "pizarra",
+    "navegador",
+    "pantalla",
+    "compartiendo",
+    "presentación",
+    "figma",
+    "powerpoint",
+    "diagrama",
+    "convenio",
+    "parámetros",
+    "historia",
+    "clínica",
+    "laboral",
+    "formulario",
+    "mockup",
+    "prototipo",
+    "e-learning",
+    "portal",
+    "tablero",
+    "matriz",
+    "flujo",
+    "arquitectura",
+    "documento",
+    "excel",
+    "hoja de cálculo",
+    "miro",
+    "screen share",
 )
+
+_BOT_UI_RE = re.compile(r"(?i)read\.ai|meeting notes|otter|fireflies")
+_TILE_ONLY_RE = re.compile(
+    r"(?i)(?:solo |únicamente )?(?:participantes visibles|avatares|fondo negro|burbuja circular)"
+)
+_CIRCLE_INITIALS_RE = re.compile(r"(?i)c[ií]rculos?.*(iniciales|siglas|colores)")
 
 _EN_MARKERS = re.compile(
     r"\b(the|and|with|will|should|includes|portal|interface|section|users)\b", re.I
@@ -211,25 +244,26 @@ def sanitize_visual_description(description: str) -> str:
     return text
 
 
-def is_low_value_visual_description(description: str) -> bool:
+def has_shared_content_signal(text: str) -> bool:
+    lowered = text.lower()
+    return any(signal in lowered for signal in SHARED_CONTENT_SIGNALS)
+
+
+def is_low_value_visual_description(description: str, *, frame_type: str = "other") -> bool:
     text = sanitize_visual_description(description)
     if not text:
         return True
-    if _LOW_VALUE_VISUAL_RE.search(text):
-        shared_signals = (
-            "whiteboard",
-            "pizarra",
-            "navegador",
-            "pantalla",
-            "figma",
-            "powerpoint",
-            "diagrama",
-            "convenio",
-            "parámetros",
-        )
-        lowered = text.lower()
-        if not any(signal in lowered for signal in shared_signals):
-            return True
+    normalized_type = frame_type.split("|")[0].strip().lower()
+    if normalized_type in STRUCTURED_VISION_TYPES and len(text) >= 20:
+        return False
+    if has_shared_content_signal(text):
+        return False
+    if _BOT_UI_RE.search(text):
+        return True
+    if _CIRCLE_INITIALS_RE.search(text):
+        return True
+    if _TILE_ONLY_RE.search(text):
+        return True
     return False
 
 
@@ -261,7 +295,10 @@ def select_visual_for_extraction(
         entry
         for entry in scoped
         if isinstance(entry, dict)
-        and not is_low_value_visual_description(str(entry.get("description", "")))
+        and not is_low_value_visual_description(
+            str(entry.get("description", "")),
+            frame_type=str(entry.get("type", "other")),
+        )
     ]
     ranked = sorted(
         candidates,

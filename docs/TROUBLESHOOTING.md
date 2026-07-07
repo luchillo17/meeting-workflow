@@ -100,6 +100,20 @@ Re-transcribe:
 uv run meeting-workflow process --force
 ```
 
+### `meeting-workflow eval` failed
+
+Pilot regression checks (`workflow/extraction_eval.py`) guard four known output folders — counts, chapters, vision frames, domain terms, and action-item shape. Common causes:
+
+- **Stale output** — re-run extraction or full pipeline: `uv run meeting-workflow process --extract-only --file …` or `--force`
+- **Missing vision frames** — vision filter dropped tile-only descriptions; re-run vision stage or full process after filter updates
+- **Transcript term missing in extraction** — term appears in `transcript.txt` but not in `extraction.json` blob; improve prompts or relax `transcript_terms` for that pilot slug
+- **Short topic or empty action `task`** — extraction model drift; re-run with current Ollama text model
+
+```bash
+uv run meeting-workflow eval
+uv run meeting-workflow check
+```
+
 ### Ollama not reachable
 
 ```bash
