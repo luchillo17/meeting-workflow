@@ -128,3 +128,22 @@ def discover_publishable(output_root: Path) -> list[Path]:
         for path in output_root.iterdir()
         if path.is_dir() and (path / "extraction.json").is_file()
     )
+
+
+def published_source_slugs(meetings_dir: Path) -> set[str]:
+    if not meetings_dir.is_dir():
+        return set()
+    slugs: set[str] = set()
+    for path in meetings_dir.glob("*.md"):
+        if path.name == "index.md":
+            continue
+        meta, _ = parse_frontmatter(path.read_text(encoding="utf-8"))
+        slug = meta.get("source_slug")
+        if slug:
+            slugs.add(str(slug))
+    return slugs
+
+
+def discover_unpublished(output_root: Path, meetings_dir: Path) -> list[Path]:
+    published = published_source_slugs(meetings_dir)
+    return [path for path in discover_publishable(output_root) if path.name not in published]

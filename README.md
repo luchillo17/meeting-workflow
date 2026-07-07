@@ -30,7 +30,11 @@ uv run meeting-workflow eval
 uv run meeting-workflow scan
 uv run meeting-workflow scan --process   # process pending only
 
+# Full operator loop: process pending + publish new briefs
+uv run meeting-workflow inbox
+
 # Publish agent briefs to docs/meetings/ (for Cursor @ context)
+uv run meeting-workflow publish --new
 uv run meeting-workflow publish --all
 ```
 
@@ -60,7 +64,10 @@ Platform + GPU: **[docs/SETUP.md](docs/SETUP.md)**
 | `uv run meeting-workflow process --extract-only` | Re-run extraction; reuse transcript + vision  |
 | `uv run meeting-workflow eval`                   | Pilot regression spot-checks on output dirs   |
 | `uv run meeting-workflow publish --all`          | Publish briefs to `docs/meetings/`            |
+| `uv run meeting-workflow publish --new`          | Publish only extractions not yet in docs      |
 | `uv run meeting-workflow publish --dir PATH`     | Publish one extraction folder                 |
+| `uv run meeting-workflow inbox`                  | Process pending + publish new briefs          |
+| `uv run meeting-workflow inbox --dry-run`        | Preview inbox plan without changes            |
 | `uv run meeting-workflow scan`                   | List recordings in watch folders + status     |
 | `uv run meeting-workflow scan --process`         | Process pending recordings from watch folders |
 | `uv run meeting-workflow process --folder PATH`  | Process pending recordings in one folder      |
