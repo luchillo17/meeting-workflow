@@ -42,6 +42,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to .mp4 (repeat for batch; overrides RECORDING_PATH)",
     )
     process.add_argument("--force", action="store_true", help="Reprocess even if Extraction exists")
+    process.add_argument(
+        "--extract-only",
+        action="store_true",
+        help="Re-run extraction only (reuse transcript, frames, and vision)",
+    )
 
     frames = sub.add_parser(
         "frames", help="Extract frames only (uses existing transcript.json if present)"
@@ -165,7 +170,7 @@ def cmd_process(args: argparse.Namespace) -> int:
         OllamaStructuredExtractor(config),
     )
     try:
-        runner.run_batch(files, force=args.force)
+        runner.run_batch(files, force=args.force, extract_only=args.extract_only)
     except (FileNotFoundError, RuntimeError, ValueError, OSError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
