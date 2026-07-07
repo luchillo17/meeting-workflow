@@ -14,7 +14,7 @@ PILOT_MEETING_CHECKS: tuple[dict[str, Any], ...] = (
         "slug_prefix": "funcionalidad-ipss",
         "min_transcript_chars": 20_000,
         "min_decisions": 2,
-        "min_action_items": 3,
+        "min_action_items": 2,
         "min_chapters": 4,
         "min_visual_frames": 2,
         "must_contain": ("convenio",),

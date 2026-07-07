@@ -100,6 +100,16 @@ Re-transcribe:
 uv run meeting-workflow process --force
 ```
 
+### Diarization fails (`HF_TOKEN`, `pyannote.audio`)
+
+When `diarization.enabled: true` in `config.yaml`:
+
+- Accept [pyannote model terms](https://huggingface.co/pyannote/speaker-diarization-3.1) and set `HF_TOKEN` in `.env`
+- Install: `uv sync --extra diarization`
+- `process --extract-only` does **not** add speakers — use `process --force` to re-transcribe
+
+To disable without uninstalling: `diarization.enabled: false` in `config.yaml`.
+
 ### `meeting-workflow eval` failed
 
 Pilot regression checks (`workflow/extraction_eval.py`) guard four known output folders — counts, chapters, vision frames, domain terms, and action-item shape. Common causes:

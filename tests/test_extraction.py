@@ -10,6 +10,7 @@ import pytest
 from workflow.extraction import (
     OllamaStructuredExtractor,
     build_extraction_prompt,
+    build_merge_extraction_prompt,
     extraction_has_language_drift,
     extraction_is_structurally_empty,
     extraction_json_schema,
@@ -31,10 +32,34 @@ def test_build_extraction_prompt_includes_fidelity_rules() -> None:
     prompt = build_extraction_prompt("texto", [], output_language="es")
 
     assert "Fidelity rules" in prompt
+    assert "Section definitions" in prompt
+    assert "key_decisions" in prompt
+    assert "se me ocurre" in prompt
     assert "Do not infer unstated" in prompt
     assert "Write all JSON string values in Spanish" in prompt
     assert "deadline" in prompt
     assert "Do not invent deadlines" in prompt
+
+
+def test_build_merge_prompt_includes_classification_rules() -> None:
+    from workflow.transcript_chapters import TranscriptChapter
+
+    chapter = TranscriptChapter(
+        index=1,
+        start_seconds=0.0,
+        end_seconds=60.0,
+        text="Acordamos el piloto.",
+        path="chapters/chapter_001.txt",
+    )
+    prompt = build_merge_extraction_prompt(
+        [(chapter, {"topic": "T", "key_decisions": ["Acordamos el piloto"]})],
+        [],
+        output_language="es",
+    )
+
+    assert "DEMOTE" not in prompt
+    assert "demote ONLY" in prompt.lower() or "demote only" in prompt.lower()
+    assert "Section definitions" in prompt
 
 
 def test_build_extraction_prompt_uses_configured_output_language() -> None:

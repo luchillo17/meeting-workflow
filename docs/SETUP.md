@@ -44,6 +44,8 @@ Project root:
 python3 scripts/install.py   # uv sync + setup
 # or:
 uv sync
+# optional speaker diarization (pyannote + torch):
+uv sync --extra diarization
 uv run meeting-workflow setup
 ```
 
@@ -52,7 +54,19 @@ uv run meeting-workflow setup
 ```env
 RECORDING_PATH=/path/to/recording.mp4
 OUTPUT_DIR=output
+# HF_TOKEN=...   # required when diarization.enabled is true (see below)
 ```
+
+### Speaker diarization (optional)
+
+When `diarization.enabled: true` in `config.yaml` (default in repo):
+
+1. Accept model terms: [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
+2. Create a Hugging Face access token and set `HF_TOKEN` in `.env`
+3. Install extras: `uv sync --extra diarization`
+4. Re-transcribe pilots with `process --force` (extract-only does not add speakers)
+
+`transcript.txt` will use `[Speaker 1]` / `[Speaker 2]` by default. The pipeline always tries to infer real names from speech (`[Sergio]` when found); labels stay `Speaker N` when not inferable. Optional `diarization.roster` in `config.yaml` helps match known attendees.
 
 Ollama models:
 
@@ -78,11 +92,12 @@ Or: `uv run python run.py process --force`
 
 ## v1 status
 
-| Stage                                | Status            |
-| ------------------------------------ | ----------------- |
-| Transcript (ffmpeg + faster-whisper) | **Real**          |
-| Visual Capture (ffmpeg + Ollama VL)  | **Real**          |
-| Structured Extraction + Summary      | **Real** (Ollama) |
+| Stage                                    | Status                |
+| ---------------------------------------- | --------------------- |
+| Transcript (ffmpeg + faster-whisper)     | **Real**              |
+| Speaker diarization (pyannote, optional) | **Real** when enabled |
+| Visual Capture (ffmpeg + Ollama VL)      | **Real**              |
+| Structured Extraction + Summary          | **Real** (Ollama)     |
 
 All artifacts real: `transcript.txt`, `frames/`, `visual_content.json`, `extraction.json`, `summary.md`.
 

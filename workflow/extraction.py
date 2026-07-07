@@ -35,6 +35,38 @@ _MAX_TRANSCRIPT_CHARS = 24_000
 _MIN_TRANSCRIPT_FOR_EMPTY_RETRY = 5_000
 _EXTRACTION_EMPTY_RETRIES = 3
 
+_CLASSIFICATION_RULES = """\
+Section definitions (apply strictly):
+- topic: one short title for the meeting's main subject — theme or outcome, not a feature spec.
+- key_decisions: outcomes the group explicitly agreed or committed to in speech.
+  INCLUDE:
+  (a) team priority or sequencing with buy-in ("primero lo normativo", "después convenios",
+      "reenfoquemos prioridades", "terminar X antes de Y") when others align or confirm;
+  (b) explicit agreement on business rules the team accepts ("de acuerdo", "listo", "sí",
+      "correcto", "exacto", "acordamos", "quedamos en").
+  EXCLUDE:
+  (a) a single speaker's feature brainstorm without confirmation ("se me ocurre", "yo creo",
+      "podríamos", "sería bueno", "lo que propongo", "habría que") — those go in
+      technical_details or open_questions;
+  (b) UI field specs or implementation detail — technical_details, not key_decisions.
+- action_items: concrete post-meeting tasks with a clear deliverable — a meeting to schedule,
+  a diagram to draw, a review to perform, a document to validate.
+  Use an imperative or "Name: deliverable" phrasing. owner only when speech assigns a person.
+  Do NOT list product requirements, field names, or UI components here.
+  BAD: "Crear campo Convenio opcional en historial clínico"
+  GOOD: "Sergio: dibujar el flujo de convenio para revisión conjunta"
+  GOOD: "Lucho: valorar impacto en cronograma RDA antes del 15"
+  Put field/requirement lists in technical_details.
+- technical_details: requirements, fields, flows, business rules, and design ideas discussed —
+  including unconfirmed proposals and screen-walkthrough content.
+- status_updates: material project, customer, or timeline progress — NOT call logistics
+  (who joined, screen share, recording, audio/video quality, greetings, small talk).
+- blockers_risks: impediments, external dependencies, regulatory uncertainty, migration gaps,
+  or delivery risks explicitly discussed (e.g. missing onboarding features blocking a go-live).
+- open_questions: unresolved questions explicitly raised (including normative/regulatory doubts).
+- next_steps: stated follow-ups (meetings, diagrams, reviews, evaluations) even if unassigned.
+"""
+
 _EXTRACTION_PROMPT = """You summarize meetings from a transcript and optional visual captures.
 
 Write all JSON string values in {output_language}.
@@ -59,6 +91,7 @@ Source priority (mandatory):
 - Visual captures are supplementary: use them only for technical_details and to clarify the topic.
   Never invent decisions or action items from visuals alone.
 
+{_classification_rules}
 Fidelity rules (mandatory):
 - Include only facts explicitly stated in the transcript or visual captures.
   Do not invent names, dates, numbers, or commitments.
@@ -74,6 +107,10 @@ Fidelity rules (mandatory):
   put it in deadline (ISO date, dd/mm, or spoken phrase like "el lunes"). Leave deadline empty
   when no timing was stated. Do not invent deadlines.
 - owner is optional: set only when speech explicitly assigns a person to that task.
+
+Speaker turns (when [Speaker N] or [Name] labels appear):
+- Use turn boundaries: proposals (one speaker monologue) vs agreement (another confirms).
+- Put only explicit group agreement in key_decisions.
 
 Use empty lists when a section has no information.
 Return only the JSON object, no markdown or extra text.
@@ -105,6 +142,9 @@ Return a single JSON object with this exact shape:
 
 Rules:
 - Combine chapter findings; remove duplicates and near-duplicates.
+{_classification_rules}
+- During merge, review key_decisions: demote ONLY items that are clearly a single
+  speaker's unconfirmed proposal. Keep team priorities, deferrals, and agreed business rules.
 - Keep the most specific wording when two items describe the same fact.
 - Do not invent facts that are absent from the chapter extractions or visual captures.
 - Preserve action_item deadlines from chapter extractions when merging duplicates.
@@ -124,9 +164,13 @@ _GROUNDING_PROMPT = """Review a merged meeting extraction against chapter transc
 
 Write all JSON string values in {output_language}.
 
-Remove any key_decisions, action_items, blockers_risks, status_updates, technical_details,
-open_questions, or next_steps that are NOT supported by the chapter transcripts below.
-Keep supported items unchanged. Synthesize one concise topic.
+Remove bullets NOT supported by the chapter transcripts below.
+Also RECLASSIFY mislabeled items when obvious:
+- key_decisions that are only unconfirmed feature specs from one speaker → technical_details
+- action_items that are field/requirement lists without a deliverable → technical_details
+- status_updates that are call logistics (joins, screen share, AV) → remove
+Do not remove valid team priorities or deferrals from key_decisions.
+Keep supported, correctly labeled items unchanged. Synthesize one concise topic.
 
 Return only the corrected JSON object matching the same schema. No markdown or prose.
 
@@ -141,8 +185,9 @@ _SYSTEM_PROMPT = (
     "You are a JSON extraction API. Output MUST be a single raw JSON object — "
     "no markdown, no headings, no prose before or after the JSON. "
     "Write ALL string values in {output_language} only — never use another language. "
-    "Ground decisions and action items in speech from the transcript; "
-    "do not invent or re-label numbers."
+    "Classify strictly: key_decisions need explicit agreement; proposals and requirements "
+    "belong in technical_details; action_items need deliverable tasks, not feature lists. "
+    "Ground every bullet in transcript speech; do not invent or re-label numbers."
 )
 
 _TYPE_PRIORITY = {"whiteboard": 4, "diagram": 3, "slide": 2, "other": 1}
@@ -447,6 +492,7 @@ def build_extraction_prompt(
         visual_count=len(visual_subset),
         output_language=language_display_name(output_language),
         correction_hint=hint_block,
+        _classification_rules=_CLASSIFICATION_RULES,
     )
 
 
@@ -490,6 +536,7 @@ def build_merge_extraction_prompt(
         visual_count=len(visual_subset),
         output_language=language_display_name(output_language),
         correction_hint=hint_block,
+        _classification_rules=_CLASSIFICATION_RULES,
     )
 
 
@@ -833,8 +880,9 @@ class OllamaStructuredExtractor:
                 output_dir,
                 correction_hint=(
                     "CRITICAL: The transcript is long and contains spoken decisions, "
-                    "tasks, and follow-ups. Extract key_decisions, action_items, "
-                    "blockers_risks, and next_steps from what participants SAID. "
+                    "tasks, and follow-ups. Extract key_decisions only when the group "
+                    "explicitly agreed; put proposals in technical_details. "
+                    "Put deliverable tasks in action_items, not feature specs. "
                     "Do not leave all structured lists empty."
                 ),
             )
@@ -932,7 +980,9 @@ class OllamaStructuredExtractor:
     ) -> dict[str, Any]:
         hint = (
             f"Section {chapter.index} of {chapter_total} ({chapter.time_range_label}). "
-            "Extract only facts spoken in this section."
+            "Extract only facts spoken in this section. "
+            "Proposals without group agreement → technical_details, not key_decisions. "
+            "Skip call logistics in status_updates."
         )
         return self._run_extraction_pass(
             chapter.text,

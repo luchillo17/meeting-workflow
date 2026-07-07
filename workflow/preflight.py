@@ -210,6 +210,40 @@ def run_preflight(project_root: Path | None = None) -> list[Check]:
                 )
             )
 
+    if config_path.is_file():
+        from workflow.utils import load_config
+
+        config = load_config(config_path)
+        diar_cfg = config.get("diarization", {})
+        if bool(diar_cfg.get("enabled", False)):
+            import os
+
+            from workflow.diarization import resolve_hf_token
+
+            token = resolve_hf_token(config)
+            if token:
+                checks.append(Check("diarization token", "ok", "HF token set"))
+            else:
+                checks.append(
+                    Check(
+                        "diarization token",
+                        "fail",
+                        "HF_TOKEN unset — accept pyannote model terms and set HF_TOKEN in .env",
+                    )
+                )
+            try:
+                import pyannote.audio  # noqa: F401
+
+                checks.append(Check("pyannote.audio", "ok", "installed"))
+            except ImportError:
+                checks.append(
+                    Check(
+                        "pyannote.audio",
+                        "fail",
+                        "missing — run: uv sync --extra diarization",
+                    )
+                )
+
     return checks
 
 

@@ -37,6 +37,29 @@ def test_load_transcript_for_frames_reads_segments(tmp_path: Path) -> None:
     assert "tablero" in transcript.text
 
 
+def test_load_transcript_for_frames_preserves_speaker_labels(tmp_path: Path) -> None:
+    from workflow.frames import load_transcript_for_frames
+
+    out = tmp_path / "extraction"
+    out.mkdir()
+    (out / "transcript.json").write_text(
+        json.dumps(
+            {
+                "segments": [
+                    {"start": 0.0, "end": 2.0, "text": "propuesta", "speaker": "Speaker 1"},
+                    {"start": 2.0, "end": 4.0, "text": "de acuerdo", "speaker": "Speaker 2"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    transcript = load_transcript_for_frames(out)
+
+    assert "[Speaker 1]" in transcript.text
+    assert "[Speaker 2]" in transcript.text
+
+
 def test_load_transcript_for_frames_missing_returns_empty(tmp_path: Path) -> None:
     from workflow.frames import load_transcript_for_frames
 

@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from workflow.transcript_format import segments_to_display_text
 from workflow.utils import write_json
 
 _TIMESTAMP_RE = re.compile(r"^(\d{2}):(\d{2}):(\d{2})$")
@@ -58,7 +59,7 @@ def split_segments_into_chapters(
         nonlocal bucket_segments, bucket_chars
         if not bucket_segments:
             return
-        text = " ".join(str(seg.get("text", "")).strip() for seg in bucket_segments).strip()
+        text = segments_to_display_text(bucket_segments).strip()
         if not text:
             bucket_segments = []
             bucket_chars = 0

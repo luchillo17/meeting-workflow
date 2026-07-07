@@ -12,6 +12,13 @@ dependencies = [
     "rich>=15.0.0",
 ]
 
+[project.optional-dependencies]
+diarization = [
+    "pyannote.audio>=3.1.1",
+    "torch>=2.2.0",
+    "torchaudio>=2.2.0",
+]
+
 [project.scripts]
 meeting-workflow = "workflow.cli:main"
 
@@ -44,8 +51,9 @@ pyyaml = "yaml"
 
 [tool.deptry.per_rule_ignores]
 # Transitive runtime deps of faster-whisper; imported lazily for GPU checks/cleanup.
-DEP001 = ["ctranslate2", "torch"]
-DEP003 = ["ctranslate2", "torch"]
+DEP001 = ["ctranslate2", "torch", "pyannote"]
+DEP002 = ["pyannote.audio", "torchaudio"]
+DEP003 = ["ctranslate2", "torch", "pyannote"]
 
 [tool.ruff]
 line-length = 100

@@ -40,6 +40,15 @@ whisper:
   log_prob_threshold: -1.0 # average logprob guard
   filter_hallucination_phrases: true # post-filter known silence phrases (e.g. repeated "Gracias.")
 
+diarization:
+  enabled: true # speaker labels on transcript segments ([Speaker 1], [Speaker 2], ...)
+  model: "pyannote/speaker-diarization-3.1"
+  device: cuda # falls back to cpu when CUDA unavailable
+  hf_token_env: HF_TOKEN # accept model terms on Hugging Face, then set token in .env
+  # roster: [Sergio, Lucho] # optional attendee hints when matching spoken names
+  # min_speakers: 2
+  # max_speakers: 6
+
 frames:
   scene_threshold: 0.25 # lower catches video-call tile/layout changes (e.g. someone joining)
   interval_seconds: 60 # gap-fill step when no scene/cue for a long stretch

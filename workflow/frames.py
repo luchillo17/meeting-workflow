@@ -11,6 +11,7 @@ from pathlib import Path
 
 from PIL import Image, ImageFilter
 
+from workflow.transcript_format import segments_to_display_text
 from workflow.utils import run_cmd
 
 _TRIGGER_PRIORITY = {"visual_cue": 3, "scene": 2, "interval": 1}
@@ -43,7 +44,7 @@ def load_transcript_for_frames(output_dir: Path) -> FrameTranscript:
         for segment in segments
         if isinstance(segment, dict) and segment.get("start") is not None
     ]
-    text = " ".join(str(segment.get("text", "")) for segment in valid_segments)
+    text = segments_to_display_text(valid_segments)
     return FrameTranscript(segments=valid_segments, text=text)
 
 

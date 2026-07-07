@@ -8,7 +8,7 @@ faster-whisper + Ollama. ~$0 API cost. **Windows, Linux, macOS**.
 
 **v1 feature-complete** on `main`. Batch + Qwen 3.5 ([#13](https://github.com/luchillo17/meeting-workflow/pull/13)), map-reduce extraction ([#14](https://github.com/luchillo17/meeting-workflow/pull/14)), pilot validation ([#15](https://github.com/luchillo17/meeting-workflow/pull/15)), publish ([#16](https://github.com/luchillo17/meeting-workflow/pull/16)), folder scan ([#17](https://github.com/luchillo17/meeting-workflow/pull/17)), inbox ([#18](https://github.com/luchillo17/meeting-workflow/pull/18)) — all merged. Whisper anti-hallucination: [PR #10](https://github.com/luchillo17/meeting-workflow/pull/10).
 
-**Phase 2 (quality):** stronger pilot `eval` guards (chapters, vision frames, transcript grounding, action-item shape) and vision filter tuning to keep slide/diagram content over tile-only UI noise.
+**Phase 2 (quality):** stronger pilot `eval` guards (chapters, vision frames, transcript grounding, action-item shape), optional **audio speaker diarization** (`[Speaker 1]` labels in transcript), and vision filter tuning to keep slide/diagram content over tile-only UI noise.
 
 ## Pilot
 

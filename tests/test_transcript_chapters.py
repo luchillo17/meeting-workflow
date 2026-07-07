@@ -10,6 +10,18 @@ from workflow.transcript_chapters import (
 )
 
 
+def test_split_segments_into_chapters_preserves_speaker_labels() -> None:
+    segments = [
+        {"start": 0.0, "end": 5.0, "text": "propuesta", "speaker": "Speaker 1"},
+        {"start": 5.0, "end": 10.0, "text": "de acuerdo", "speaker": "Speaker 2"},
+    ]
+
+    chapters = split_segments_into_chapters(segments, target_chars=500, min_chars=1)
+
+    assert "[Speaker 1]" in chapters[0].text
+    assert "[Speaker 2]" in chapters[0].text
+
+
 def test_split_segments_into_chapters_respects_target_size() -> None:
     segments = [{"start": i * 10.0, "end": i * 10.0 + 9.0, "text": "x" * 2_000} for i in range(6)]
 
