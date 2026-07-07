@@ -26,6 +26,10 @@ uv run meeting-workflow process --extract-only --file meeting-a.mp4
 # Regression spot-checks on pilot output folders
 uv run meeting-workflow eval
 
+# Scan watch folders for pending recordings (set WATCH_FOLDERS or ONEDRIVE_ROOT in .env)
+uv run meeting-workflow scan
+uv run meeting-workflow scan --process   # process pending only
+
 # Publish agent briefs to docs/meetings/ (for Cursor @ context)
 uv run meeting-workflow publish --all
 ```
@@ -57,6 +61,9 @@ Platform + GPU: **[docs/SETUP.md](docs/SETUP.md)**
 | `uv run meeting-workflow eval`                   | Pilot regression spot-checks on output dirs   |
 | `uv run meeting-workflow publish --all`          | Publish briefs to `docs/meetings/`            |
 | `uv run meeting-workflow publish --dir PATH`     | Publish one extraction folder                 |
+| `uv run meeting-workflow scan`                   | List recordings in watch folders + status     |
+| `uv run meeting-workflow scan --process`         | Process pending recordings from watch folders |
+| `uv run meeting-workflow process --folder PATH`  | Process pending recordings in one folder      |
 | `uv run meeting-workflow frames`                 | Frame extraction only (`transcript.json`)     |
 | `uv run meeting-workflow frames --force`         | Re-extract frames, no re-transcribe           |
 

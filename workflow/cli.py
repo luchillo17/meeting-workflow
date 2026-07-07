@@ -19,6 +19,12 @@ from workflow.frames import FfmpegFrameExtractor, frames_bundle_valid, load_tran
 from workflow.preflight import Check, has_failures, run_preflight
 from workflow.publish import discover_publishable, publish_output_dir
 from workflow.runner import WorkflowRunner
+from workflow.scan import (
+    discover_recordings,
+    pending_recordings,
+    resolve_watch_folders,
+    scan_recordings,
+)
 from workflow.settings import Settings
 from workflow.transcriber import WhisperTranscriber
 from workflow.utils import invalidate_downstream_artifacts, slugify
@@ -48,6 +54,36 @@ def _build_parser() -> argparse.ArgumentParser:
         "--extract-only",
         action="store_true",
         help="Re-run extraction only (reuse transcript, frames, and vision)",
+    )
+    process.add_argument(
+        "--folder",
+        type=Path,
+        action="append",
+        dest="folders",
+        metavar="PATH",
+        help="Process pending recordings from folder (WATCH_FOLDERS / ONEDRIVE_ROOT fallback)",
+    )
+
+    scan_cmd = sub.add_parser(
+        "scan", help="List recordings in watch folders and their processing status"
+    )
+    scan_cmd.add_argument(
+        "--folder",
+        type=Path,
+        action="append",
+        dest="folders",
+        metavar="PATH",
+        help="Folder to scan (repeatable; default: WATCH_FOLDERS or ONEDRIVE_ROOT/Grabaciones)",
+    )
+    scan_cmd.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Include recordings in subfolders",
+    )
+    scan_cmd.add_argument(
+        "--process",
+        action="store_true",
+        help="Run workflow on pending recordings found by scan",
     )
 
     frames = sub.add_parser(
@@ -178,18 +214,21 @@ def _config_with_env(settings: Settings) -> dict:
     return merged
 
 
-def cmd_process(args: argparse.Namespace) -> int:
-    ensure_cuda_dll_paths()
-    settings = Settings.load()
-    files: list[Path] = list(args.files or [])
-    if not files:
-        recording = Path(os.environ.get("RECORDING_PATH", ""))
-        if recording and str(recording) != ".":
-            files = [recording]
-    if not files:
-        print("Error: provide --file or set RECORDING_PATH in .env", file=sys.stderr)
-        return 1
+def _resolve_watch_folders(cli_folders: list[Path] | None) -> list[Path]:
+    return resolve_watch_folders(
+        cli_folders=cli_folders,
+        watch_folders_env=os.environ.get("WATCH_FOLDERS"),
+        onedrive_root=os.environ.get("ONEDRIVE_ROOT"),
+    )
 
+
+def _run_workflow_batch(
+    settings: Settings,
+    files: list[Path],
+    *,
+    force: bool,
+    extract_only: bool,
+) -> int:
     config = _config_with_env(settings)
     transcriber = WhisperTranscriber(config)
     runner = WorkflowRunner(
@@ -200,13 +239,82 @@ def cmd_process(args: argparse.Namespace) -> int:
         OllamaStructuredExtractor(config),
     )
     try:
-        runner.run_batch(files, force=args.force, extract_only=args.extract_only)
+        runner.run_batch(files, force=force, extract_only=extract_only)
     except (FileNotFoundError, RuntimeError, ValueError, OSError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
+    return 0
+
+
+def cmd_process(args: argparse.Namespace) -> int:
+    ensure_cuda_dll_paths()
+    settings = Settings.load()
+    files: list[Path] = list(args.files or [])
+    if args.folders:
+        folders = _resolve_watch_folders(args.folders)
+        if not folders:
+            print(
+                "Error: provide --folder or set WATCH_FOLDERS / ONEDRIVE_ROOT in .env",
+                file=sys.stderr,
+            )
+            return 1
+        if args.force:
+            files = discover_recordings(folders)
+        else:
+            files = pending_recordings(folders, settings.output_dir)
+    elif not files:
+        recording = Path(os.environ.get("RECORDING_PATH", ""))
+        if recording and str(recording) != ".":
+            files = [recording]
+    if not files:
+        print(
+            "Error: provide --file, --folder, or set RECORDING_PATH in .env",
+            file=sys.stderr,
+        )
+        return 1
+
+    return _run_workflow_batch(settings, files, force=args.force, extract_only=args.extract_only)
+
+
+def cmd_scan(args: argparse.Namespace) -> int:
+    console = Console()
+    settings = Settings.load()
+    folders = _resolve_watch_folders(args.folders)
+    if not folders:
+        print(
+            "Error: provide --folder or set WATCH_FOLDERS / ONEDRIVE_ROOT in .env",
+            file=sys.stderr,
+        )
+        return 1
+
+    results = scan_recordings(folders, settings.output_dir, recursive=args.recursive)
+    if not results:
+        console.print("[yellow]No recordings found[/yellow] in configured watch folders")
+        return 0
+
+    for result in results:
+        style = "green" if result.status == "done" else "yellow"
+        console.print(
+            f"[{style}]{result.status:7}[/{style}] {result.recording.name} "
+            f"[dim]-> {result.output_dir.name}[/dim]"
+        )
+
+    pending = [result.recording for result in results if result.status == "pending"]
+    console.print(
+        f"[bold]{len(results)}[/bold] recording(s): "
+        f"[green]{len(results) - len(pending)} done[/green], "
+        f"[yellow]{len(pending)} pending[/yellow]"
+    )
+
+    if args.process:
+        if not pending:
+            console.print("[green]Nothing pending — all recordings already processed.[/green]")
+            return 0
+        ensure_cuda_dll_paths()
+        return _run_workflow_batch(settings, pending, force=False, extract_only=False)
     return 0
 
 
@@ -302,4 +410,6 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_eval(args)
     if args.command == "publish":
         return cmd_publish(args)
+    if args.command == "scan":
+        return cmd_scan(args)
     return 1

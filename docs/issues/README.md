@@ -13,4 +13,4 @@
 
 Epic [#1](https://github.com/luchillo17/meeting-workflow/issues/1) **closed** — v1 delivered.
 
-Post-v1 delivered: batch ([#13](https://github.com/luchillo17/meeting-workflow/pull/13)), map-reduce ([#14](https://github.com/luchillo17/meeting-workflow/pull/14)), pilot validation ([#15](https://github.com/luchillo17/meeting-workflow/pull/15)). Next: `publish`, folder scan, UI — see [knowledge-delivery.md](../inspiration/knowledge-delivery.md).
+Post-v1 delivered: batch ([#13](https://github.com/luchillo17/meeting-workflow/pull/13)), map-reduce ([#14](https://github.com/luchillo17/meeting-workflow/pull/14)), pilot validation ([#15](https://github.com/luchillo17/meeting-workflow/pull/15)), publish ([#16](https://github.com/luchillo17/meeting-workflow/pull/16)). Next: folder scan (in progress), UI — see [knowledge-delivery.md](../inspiration/knowledge-delivery.md).
