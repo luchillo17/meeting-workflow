@@ -12,23 +12,28 @@ PILOT_MEETING_CHECKS: tuple[dict[str, Any], ...] = (
         "slug_prefix": "funcionalidad-ipss",
         "min_transcript_chars": 20_000,
         "min_decisions": 1,
+        "min_action_items": 1,
         "must_contain": ("convenio",),
     },
     {
         "slug_prefix": "revisión-aspectos-relevantes-poc",
         "min_transcript_chars": 40_000,
         "min_decisions": 2,
+        "min_action_items": 1,
         "must_contain": ("portal",),
     },
     {
         "slug_prefix": "revision-avances-mvp",
         "min_transcript_chars": 40_000,
         "min_decisions": 2,
+        "min_action_items": 1,
     },
     {
         "slug_prefix": "revision-formato-hc-laboral",
         "min_transcript_chars": 30_000,
         "min_decisions": 1,
+        "min_action_items": 1,
+        "must_contain": ("historia",),
     },
 )
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -16,6 +17,7 @@ from workflow.extraction import OllamaStructuredExtractor
 from workflow.extraction_eval import evaluate_pilot_outputs
 from workflow.frames import FfmpegFrameExtractor, frames_bundle_valid, load_transcript_for_frames
 from workflow.preflight import Check, has_failures, run_preflight
+from workflow.publish import discover_publishable, publish_output_dir
 from workflow.runner import WorkflowRunner
 from workflow.settings import Settings
 from workflow.transcriber import WhisperTranscriber
@@ -77,6 +79,34 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         type=Path,
         help="Output root to scan (default: OUTPUT_DIR from settings)",
+    )
+
+    publish_cmd = sub.add_parser(
+        "publish", help="Publish extraction briefs to docs/meetings for Cursor context"
+    )
+    publish_cmd.add_argument(
+        "--dir",
+        type=Path,
+        action="append",
+        dest="dirs",
+        metavar="PATH",
+        help="Extraction output folder (repeatable; default: all under OUTPUT_DIR)",
+    )
+    publish_cmd.add_argument(
+        "--meetings-dir",
+        type=Path,
+        default=Path("docs/meetings"),
+        help="Destination for published briefs (default: docs/meetings)",
+    )
+    publish_cmd.add_argument(
+        "--json",
+        action="store_true",
+        help="Also write extraction.json sidecar next to the markdown brief",
+    )
+    publish_cmd.add_argument(
+        "--all",
+        action="store_true",
+        help="Publish every folder under OUTPUT_DIR that has extraction.json",
     )
 
     return parser
@@ -234,6 +264,30 @@ def cmd_eval(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_publish(args: argparse.Namespace) -> int:
+    console = Console()
+    settings = Settings.load()
+    meetings_dir = args.meetings_dir
+    if args.all or not args.dirs:
+        targets = discover_publishable(settings.output_dir)
+    else:
+        targets = list(args.dirs)
+
+    if not targets:
+        print(f"Error: no publishable folders under {settings.output_dir}", file=sys.stderr)
+        return 1
+
+    try:
+        for output_dir in targets:
+            markdown_path = publish_output_dir(output_dir, meetings_dir, include_json=args.json)
+            console.print(f"[green]Published[/green] {markdown_path}")
+        console.print(f"[green]Updated[/green] {meetings_dir / 'index.md'}")
+    except (FileNotFoundError, ValueError, OSError, json.JSONDecodeError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.command == "check":
@@ -246,4 +300,6 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_frames(args)
     if args.command == "eval":
         return cmd_eval(args)
+    if args.command == "publish":
+        return cmd_publish(args)
     return 1
