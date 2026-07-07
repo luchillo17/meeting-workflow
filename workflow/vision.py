@@ -9,7 +9,7 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 
-from workflow.extraction import is_low_value_visual_description
+from workflow.extraction import is_low_value_visual_description, sanitize_visual_description
 from workflow.ollama_client import OllamaClient, resolve_ollama_settings
 from workflow.output_language import language_display_name, resolve_output_language
 from workflow.utils import invalidate_downstream_artifacts, write_json
@@ -94,6 +94,7 @@ class OllamaVisionAnalyzer:
                 frame_type, description = self._describe_frame(frame_path)
                 if frame_type == "skip" or not description.strip():
                     continue
+                description = sanitize_visual_description(description)
                 if is_low_value_visual_description(description):
                     continue
                 seconds = timestamps.get(

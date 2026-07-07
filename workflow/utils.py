@@ -63,11 +63,21 @@ def write_json(path: Path, data: dict | list) -> None:
 
 def invalidate_downstream_artifacts(output_dir: Path, *, include_visual: bool = True) -> None:
     """Remove artifacts that depend on frames/vision so failed reruns cannot leave stale data."""
-    names = ["extraction.json", "summary.md"]
+    names = ["extraction.json", "summary.md", "chapters.json"]
     if include_visual:
         names.insert(0, "visual_content.json")
     for name in names:
         (output_dir / name).unlink(missing_ok=True)
+
+    chapters_dir = output_dir / "chapters"
+    if chapters_dir.is_dir():
+        for path in chapters_dir.glob("chapter_*.txt"):
+            path.unlink(missing_ok=True)
+
+    partial_dir = output_dir / "extraction" / "chapters"
+    if partial_dir.is_dir():
+        for path in partial_dir.glob("chapter_*.json"):
+            path.unlink(missing_ok=True)
 
 
 def utc_now_iso() -> str:
