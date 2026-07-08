@@ -12,6 +12,7 @@ from pathlib import Path
 
 from rich.console import Console
 
+from workflow.batch_stats import load_run_history, median_stage_seconds_per_audio_minute
 from workflow.cuda_paths import ensure_cuda_dll_paths
 from workflow.extraction import OllamaStructuredExtractor
 from workflow.extraction_eval import evaluate_pilot_outputs
@@ -127,6 +128,19 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output root to scan (default: OUTPUT_DIR from settings)",
     )
 
+    stats_cmd = sub.add_parser("stats", help="Show recent batch run performance records (ADR 0010)")
+    stats_cmd.add_argument(
+        "--limit",
+        type=int,
+        default=5,
+        help="Number of recent runs to display (default: 5)",
+    )
+    stats_cmd.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Output root (default: OUTPUT_DIR from settings)",
+    )
+
     publish_cmd = sub.add_parser(
         "publish", help="Publish extraction briefs to docs/meetings for Cursor context"
     )
@@ -147,7 +161,12 @@ def _build_parser() -> argparse.ArgumentParser:
     publish_cmd.add_argument(
         "--json",
         action="store_true",
-        help="Also write extraction.json sidecar next to the markdown brief",
+        help="Deprecated alias; JSON sidecar is included by default (use --brief-only to skip)",
+    )
+    publish_cmd.add_argument(
+        "--brief-only",
+        action="store_true",
+        help="Publish only the markdown brief (skip JSON sidecar and context bundle)",
     )
     publish_cmd.add_argument(
         "--all",
@@ -159,7 +178,6 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Publish only extractions not yet in docs/meetings/",
     )
-
     inbox_cmd = sub.add_parser(
         "inbox",
         help="Process pending recordings from watch folders, then publish new briefs",
@@ -186,7 +204,12 @@ def _build_parser() -> argparse.ArgumentParser:
     inbox_cmd.add_argument(
         "--json",
         action="store_true",
-        help="Also write extraction.json sidecar next to each published brief",
+        help="Deprecated alias; JSON sidecar is included by default (use --brief-only to skip)",
+    )
+    inbox_cmd.add_argument(
+        "--brief-only",
+        action="store_true",
+        help="Publish markdown briefs only (skip JSON sidecar and context bundle)",
     )
     inbox_cmd.add_argument(
         "--eval",
@@ -454,6 +477,44 @@ def cmd_eval(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_stats(args: argparse.Namespace) -> int:
+    console = Console()
+    settings = Settings.load()
+    output_root = args.output_dir or settings.output_dir
+    history = load_run_history(output_root, limit=max(1, args.limit))
+    if not history:
+        console.print(f"[yellow]No batch runs recorded[/yellow] under {output_root}")
+        return 0
+    for record in reversed(history):
+        run_id = record.get("run_id", "?")
+        status = record.get("status", "?")
+        aggregates = record.get("aggregates") or {}
+        wall = aggregates.get("wall_seconds")
+        count = aggregates.get("recordings_completed")
+        console.print(f"[bold]{run_id}[/bold] [{status}] {count} recording(s), {wall}s wall")
+        for row in record.get("recordings") or []:
+            if not isinstance(row, dict):
+                continue
+            name = row.get("source_filename", "?")
+            stages = row.get("stage_seconds") or {}
+            quality = row.get("quality") or {}
+            grounding = quality.get("grounding_ratio")
+            pilot = quality.get("pilot_eval")
+            pilot_label = ""
+            if isinstance(pilot, dict):
+                pilot_label = " pilot=pass" if pilot.get("passed") else " pilot=fail"
+            console.print(
+                f"  {name}: transcript={stages.get('transcript', 0)}s "
+                f"extraction={stages.get('extraction', 0)}s "
+                f"grounding={grounding}{pilot_label}"
+            )
+    for stage in ("transcript", "frames", "vision", "extraction"):
+        median = median_stage_seconds_per_audio_minute(output_root, stage=stage)
+        if median is not None:
+            console.print(f"[dim]Median {stage}[/dim]: {median:.1f}s per audio minute")
+    return 0
+
+
 def cmd_publish(args: argparse.Namespace) -> int:
     console = Console()
     settings = Settings.load()
@@ -472,8 +533,14 @@ def cmd_publish(args: argparse.Namespace) -> int:
         return 0
 
     try:
+        brief_only = args.brief_only
         for output_dir in targets:
-            markdown_path = publish_output_dir(output_dir, meetings_dir, include_json=args.json)
+            markdown_path = publish_output_dir(
+                output_dir,
+                meetings_dir,
+                include_json=not brief_only,
+                include_bundle=not brief_only,
+            )
             console.print(f"[green]Published[/green] {markdown_path}")
         console.print(f"[green]Updated[/green] {meetings_dir / 'index.md'}")
     except (FileNotFoundError, ValueError, OSError, json.JSONDecodeError) as exc:
@@ -529,7 +596,12 @@ def cmd_inbox(args: argparse.Namespace) -> int:
 
     if plan.unpublished:
         try:
-            paths = publish_targets(plan.unpublished, args.meetings_dir, include_json=args.json)
+            paths = publish_targets(
+                plan.unpublished,
+                args.meetings_dir,
+                include_json=not args.brief_only,
+                include_bundle=not args.brief_only,
+            )
             for path in paths:
                 console.print(f"[green]Published[/green] {path}")
             console.print(f"[green]Updated[/green] {args.meetings_dir / 'index.md'}")
@@ -563,6 +635,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_frames(args)
     if args.command == "eval":
         return cmd_eval(args)
+    if args.command == "stats":
+        return cmd_stats(args)
     if args.command == "publish":
         return cmd_publish(args)
     if args.command == "scan":

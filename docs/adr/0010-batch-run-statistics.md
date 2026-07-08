@@ -67,5 +67,5 @@ human-readable JSON for shell and Cursor inspection.
 - Cross-machine aggregation (local-first only, ADR 0001)
 
 **Consequences:** Small JSON write per run; runner hooks record timings as stages
-complete. Implement after the current pilot batch finishes so we do not perturb an
-in-flight run.
+complete. Query recent runs with `meeting-workflow stats`. **Status:** implemented
+in `workflow/batch_stats.py`.

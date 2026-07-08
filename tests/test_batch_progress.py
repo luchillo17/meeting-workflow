@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+
 from workflow.batch_progress import BatchSettings
 
 
@@ -40,3 +42,26 @@ def test_batch_progress_step_percentages() -> None:
     assert "Progress  25%" in output or "Progress 25%" in output
     assert "step 1/4" in output
     assert "step 2/4" in output
+
+
+def test_batch_progress_complete_step_is_thread_safe() -> None:
+    from io import StringIO
+
+    from rich.console import Console
+
+    from workflow.batch_progress import BatchProgress
+
+    console = Console(file=StringIO(), force_terminal=False, width=120)
+    with BatchProgress(console, total_recordings=10, stage_count=1) as progress:
+        threads = [
+            threading.Thread(
+                target=progress.complete_step,
+                args=(1, "Transcript", index, f"meeting-{index}.mp4"),
+            )
+            for index in range(1, 11)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+    assert progress.completed_steps == 10

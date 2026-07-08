@@ -12,6 +12,7 @@ from typing import Any
 from rich.console import Console
 
 from workflow.batch_progress import STAGE_NAMES, BatchProgress, BatchSettings
+from workflow.batch_stats import BatchRunRecorder
 from workflow.frames import frames_bundle_valid, load_frame_paths, load_transcript_for_frames
 from workflow.ports import Extractor, FrameExtractor, Transcriber, TranscriptResult, VisionAnalyzer
 from workflow.settings import Settings
@@ -88,11 +89,24 @@ class WorkflowRunner:
 
         stage_count = self._stage_count(extract_only=extract_only, vision_only=vision_only)
         shutdown = get_shutdown_coordinator()
+        shutdown.prepare_for_batch()
         shutdown.acquire_batch_lock(self.settings.output_dir)
         self._register_shutdown_cleanup()
+        recorder = BatchRunRecorder(
+            self.settings.output_dir,
+            self.settings,
+            recording_paths,
+            force=force,
+            extract_only=extract_only,
+            vision_only=vision_only,
+        )
+        progress: BatchProgress | None = None
+        batch_state: dict[str, object] = {"recorder": recorder, "jobs": jobs, "progress": None}
+        self._register_hard_interrupt_handler(shutdown, batch_state)
 
         try:
             with BatchProgress(self.console, count, stage_count=stage_count) as progress:
+                batch_state["progress"] = progress
                 if vision_only:
                     for job in jobs:
                         shutdown.check_interrupted()
@@ -103,23 +117,102 @@ class WorkflowRunner:
                                 f"No frames for vision-only rerun: {job.output_dir} "
                                 "(run full process or frames first)"
                             )
-                    self._run_vision_stage(jobs, force=True, progress=progress, stage=1)
-                    self._run_extraction_stage(jobs, progress=progress, stage=2)
+                    self._run_vision_stage(
+                        jobs, force=True, progress=progress, stage=1, recorder=recorder
+                    )
+                    self._run_extraction_stage(jobs, progress=progress, stage=2, recorder=recorder)
                 elif extract_only:
-                    self._run_extraction_stage(jobs, progress=progress, stage=1)
+                    self._run_extraction_stage(jobs, progress=progress, stage=1, recorder=recorder)
                 elif self._batch.pipeline_workers > 1:
-                    self._run_pipelined(jobs, force=force, progress=progress)
+                    self._run_pipelined(jobs, force=force, progress=progress, recorder=recorder)
                 else:
-                    self._run_staged(jobs, force=force, progress=progress)
+                    self._run_staged(jobs, force=force, progress=progress, recorder=recorder)
         except BatchInterrupted:
+            self._persist_run_record(
+                recorder,
+                jobs,
+                status="interrupted",
+                progress=progress,
+            )
+            shutdown.cleanup()
             self.console.print("[yellow]Batch interrupted — GPU models unloaded[/yellow]")
             raise
+        except Exception:
+            self._persist_run_record(recorder, jobs, status="failed", progress=progress)
+            raise
+        else:
+            run_path = self._persist_run_record(
+                recorder, jobs, status="completed", progress=progress
+            )
+            self.console.print(f"[dim]Run stats[/dim] -> {run_path}")
         finally:
             shutdown.release_batch_lock()
 
         for job in jobs:
             self.console.print(f"[green]Done[/green] -> {job.output_dir}")
         return [job.output_dir for job in jobs]
+
+    def _persist_run_record(
+        self,
+        recorder: BatchRunRecorder,
+        jobs: list[_BatchJob],
+        *,
+        status: str,
+        progress: BatchProgress | None,
+    ) -> Path | None:
+        if not jobs:
+            return None
+        return recorder.finalize(
+            jobs,
+            status=status,  # type: ignore[arg-type]
+            steps_completed=progress.completed_steps if progress is not None else None,
+            steps_total=progress.total_steps if progress is not None else None,
+        )
+
+    def _register_shutdown_cleanup(self) -> None:
+        shutdown = get_shutdown_coordinator()
+        for adapter in (self.transcriber, self.vision, self.extractor):
+            shutdown.register_cleanup(lambda adapter=adapter: self._unload_adapter(adapter))
+
+    def _register_hard_interrupt_handler(
+        self,
+        shutdown: object,
+        batch_state: dict[str, object],
+    ) -> None:
+        from workflow.shutdown import ShutdownCoordinator
+
+        if not isinstance(shutdown, ShutdownCoordinator):
+            return
+
+        def _on_hard_exit() -> None:
+            recorder = batch_state.get("recorder")
+            jobs = batch_state.get("jobs")
+            progress = batch_state.get("progress")
+            if isinstance(recorder, BatchRunRecorder) and isinstance(jobs, list) and jobs:
+                self._persist_run_record(
+                    recorder,
+                    jobs,
+                    status="interrupted",
+                    progress=progress if isinstance(progress, BatchProgress) else None,
+                )
+            shutdown.release_batch_lock()
+
+        shutdown.register_hard_exit(_on_hard_exit)
+
+    def _with_stage_timing(
+        self,
+        recorder: BatchRunRecorder | None,
+        job: _BatchJob,
+        stage: str,
+        fn: object,
+    ) -> Any:
+        if recorder is None:
+            return fn()  # type: ignore[operator]
+        timer = recorder.start_stage_timer(job.output_dir.name, stage)
+        try:
+            return fn()  # type: ignore[operator]
+        finally:
+            timer.stop()
 
     @staticmethod
     def _stage_count(*, extract_only: bool, vision_only: bool) -> int:
@@ -129,29 +222,42 @@ class WorkflowRunner:
             return 2
         return len(STAGE_NAMES)
 
-    def _register_shutdown_cleanup(self) -> None:
-        shutdown = get_shutdown_coordinator()
-        for adapter in (self.transcriber, self.vision, self.extractor):
-            shutdown.register_cleanup(lambda adapter=adapter: self._unload_adapter(adapter))
-
-    def _run_staged(self, jobs: list[_BatchJob], *, force: bool, progress: BatchProgress) -> None:
-        self._run_transcript_stage(jobs, force=force, progress=progress)
-        self._run_frames_stage(jobs, force=force, progress=progress)
-        self._run_vision_stage(jobs, force=force, progress=progress)
-        self._run_extraction_stage(jobs, progress=progress)
+    def _run_staged(
+        self,
+        jobs: list[_BatchJob],
+        *,
+        force: bool,
+        progress: BatchProgress,
+        recorder: BatchRunRecorder | None = None,
+    ) -> None:
+        self._run_transcript_stage(jobs, force=force, progress=progress, recorder=recorder)
+        self._run_frames_stage(jobs, force=force, progress=progress, recorder=recorder)
+        self._run_vision_stage(jobs, force=force, progress=progress, recorder=recorder)
+        self._run_extraction_stage(jobs, progress=progress, recorder=recorder)
 
     def _run_pipelined(
-        self, jobs: list[_BatchJob], *, force: bool, progress: BatchProgress
+        self,
+        jobs: list[_BatchJob],
+        *,
+        force: bool,
+        progress: BatchProgress,
+        recorder: BatchRunRecorder | None = None,
     ) -> None:
         progress.begin_pipeline()
         gpu_lock = threading.Lock()
         shutdown = get_shutdown_coordinator()
         executor: ThreadPoolExecutor | None = None
+        cancel_pending = False
 
         def _work(job: _BatchJob, index: int) -> None:
             shutdown.check_interrupted()
             self._process_job_pipelined(
-                job, force=force, gpu_lock=gpu_lock, progress=progress, index=index
+                job,
+                force=force,
+                gpu_lock=gpu_lock,
+                progress=progress,
+                index=index,
+                recorder=recorder,
             )
 
         try:
@@ -163,12 +269,14 @@ class WorkflowRunner:
                 shutdown.check_interrupted()
                 future.result()
         except BatchInterrupted:
-            if executor is not None:
-                executor.shutdown(wait=False, cancel_futures=True)
+            cancel_pending = True
             raise
-        else:
+        except Exception:
+            cancel_pending = True
+            raise
+        finally:
             if executor is not None:
-                executor.shutdown(wait=True)
+                executor.shutdown(wait=not cancel_pending, cancel_futures=cancel_pending)
 
     def _process_job_pipelined(
         self,
@@ -178,32 +286,52 @@ class WorkflowRunner:
         gpu_lock: threading.Lock,
         progress: BatchProgress,
         index: int,
+        recorder: BatchRunRecorder | None = None,
     ) -> None:
         name = job.recording.name
         progress.start_step(1, "Transcript", index, name)
         with gpu_lock:
-            if self._transcribe_job(job, force=force):
-                self._unload_adapter(self.transcriber)
+
+            def _transcribe() -> None:
+                if self._transcribe_job(job, force=force):
+                    self._unload_adapter(self.transcriber)
+
+            self._with_stage_timing(recorder, job, "transcript", _transcribe)
         progress.complete_step(1, "Transcript", index, name)
 
         progress.start_step(2, "Frames", index, name)
-        self._frames_job(job, force=force)
+        self._with_stage_timing(recorder, job, "frames", lambda: self._frames_job(job, force=force))
         progress.complete_step(2, "Frames", index, name)
 
         progress.start_step(3, "Vision", index, name)
         with gpu_lock:
-            if self._vision_job(job, force=force):
-                self._unload_adapter(self.vision)
+
+            def _vision() -> None:
+                if self._vision_job(job, force=force):
+                    self._unload_adapter(self.vision)
+
+            self._with_stage_timing(recorder, job, "vision", _vision)
         progress.complete_step(3, "Vision", index, name)
 
         progress.start_step(4, "Extraction", index, name)
         with gpu_lock:
-            self._extract_job(job)
-            self._unload_adapter(self.extractor)
+
+            def _extract() -> None:
+                self._extract_job(job)
+                self._unload_adapter(self.extractor)
+
+            self._with_stage_timing(recorder, job, "extraction", _extract)
         progress.complete_step(4, "Extraction", index, name)
+        if recorder is not None:
+            recorder.mark_recording_completed(job.output_dir.name)
 
     def _run_transcript_stage(
-        self, jobs: list[_BatchJob], *, force: bool, progress: BatchProgress
+        self,
+        jobs: list[_BatchJob],
+        *,
+        force: bool,
+        progress: BatchProgress,
+        recorder: BatchRunRecorder | None = None,
     ) -> None:
         progress.begin_stage(1, "Transcript")
         transcribed_any = False
@@ -211,14 +339,24 @@ class WorkflowRunner:
         for index, job in enumerate(jobs, start=1):
             shutdown.check_interrupted()
             progress.update(1, "Transcript", index, job.recording.name)
-            if self._transcribe_job(job, force=force):
+            if self._with_stage_timing(
+                recorder,
+                job,
+                "transcript",
+                lambda job=job: self._transcribe_job(job, force=force),
+            ):
                 transcribed_any = True
             progress.advance_stage_item(1, "Transcript", index, job.recording.name)
         if transcribed_any:
             self._unload_adapter(self.transcriber)
 
     def _run_frames_stage(
-        self, jobs: list[_BatchJob], *, force: bool, progress: BatchProgress
+        self,
+        jobs: list[_BatchJob],
+        *,
+        force: bool,
+        progress: BatchProgress,
+        recorder: BatchRunRecorder | None = None,
     ) -> None:
         progress.begin_stage(2, "Frames")
         shutdown = get_shutdown_coordinator()
@@ -241,18 +379,29 @@ class WorkflowRunner:
             for index, job in pending:
                 shutdown.check_interrupted()
                 progress.update(2, "Frames", index, job.recording.name)
-                self._frames_job(job, force=force)
+                self._with_stage_timing(
+                    recorder,
+                    job,
+                    "frames",
+                    lambda job=job: self._frames_job(job, force=force),
+                )
                 progress.advance_stage_item(2, "Frames", index, job.recording.name)
             return
 
         lock = threading.Lock()
         executor: ThreadPoolExecutor | None = None
+        cancel_pending = False
 
         def _extract_frames(item: tuple[int, _BatchJob]) -> None:
             shutdown.check_interrupted()
             index, job = item
             progress.update(2, "Frames", index, job.recording.name)
-            self._frames_job(job, force=force)
+            self._with_stage_timing(
+                recorder,
+                job,
+                "frames",
+                lambda job=job: self._frames_job(job, force=force),
+            )
             with lock:
                 progress.advance_stage_item(2, "Frames", index, job.recording.name)
 
@@ -263,12 +412,14 @@ class WorkflowRunner:
                 shutdown.check_interrupted()
                 future.result()
         except BatchInterrupted:
-            if executor is not None:
-                executor.shutdown(wait=False, cancel_futures=True)
+            cancel_pending = True
             raise
-        else:
+        except Exception:
+            cancel_pending = True
+            raise
+        finally:
             if executor is not None:
-                executor.shutdown(wait=True)
+                executor.shutdown(wait=not cancel_pending, cancel_futures=cancel_pending)
 
     def _run_vision_stage(
         self,
@@ -277,6 +428,7 @@ class WorkflowRunner:
         force: bool,
         progress: BatchProgress,
         stage: int = 3,
+        recorder: BatchRunRecorder | None = None,
     ) -> None:
         progress.begin_stage(stage, "Vision")
         vision_ran = False
@@ -284,7 +436,12 @@ class WorkflowRunner:
         for index, job in enumerate(jobs, start=1):
             shutdown.check_interrupted()
             progress.update(stage, "Vision", index, job.recording.name)
-            if self._vision_job(job, force=force):
+            if self._with_stage_timing(
+                recorder,
+                job,
+                "vision",
+                lambda job=job: self._vision_job(job, force=force),
+            ):
                 vision_ran = True
             progress.advance_stage_item(stage, "Vision", index, job.recording.name)
         if vision_ran:
@@ -296,14 +453,22 @@ class WorkflowRunner:
         *,
         progress: BatchProgress,
         stage: int = 4,
+        recorder: BatchRunRecorder | None = None,
     ) -> None:
         progress.begin_stage(stage, "Extraction")
         shutdown = get_shutdown_coordinator()
         for index, job in enumerate(jobs, start=1):
             shutdown.check_interrupted()
             progress.update(stage, "Extraction", index, job.recording.name)
-            self._extract_job(job)
+            self._with_stage_timing(
+                recorder,
+                job,
+                "extraction",
+                lambda job=job: self._extract_job(job),
+            )
             progress.advance_stage_item(stage, "Extraction", index, job.recording.name)
+            if recorder is not None:
+                recorder.mark_recording_completed(job.output_dir.name)
         self._unload_adapter(self.extractor)
 
     def _transcribe_job(self, job: _BatchJob, *, force: bool) -> bool:

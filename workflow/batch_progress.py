@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 
 from rich.console import Console
@@ -66,6 +67,8 @@ class BatchProgress:
 
         self.completed_steps = 0
 
+        self._lock = threading.Lock()
+
         self._use_live_bar = console.is_terminal
 
         self._progress: Progress | None = None
@@ -106,11 +109,10 @@ class BatchProgress:
         *,
         working: bool = False,
     ) -> None:
-        current_step = self.completed_steps + (1 if working else 0)
-
-        current_step = min(current_step, self.total_steps)
-
-        pct = int((current_step / self.total_steps) * 100)
+        with self._lock:
+            current_step = self.completed_steps + (1 if working else 0)
+            current_step = min(current_step, self.total_steps)
+            pct = int((current_step / self.total_steps) * 100)
 
         rec_part = (
             f"recording [{recording_index}/{self.total_recordings}] {_short_name(recording_name)}"
@@ -156,7 +158,8 @@ class BatchProgress:
         recording_index: int,
         recording_name: str,
     ) -> None:
-        self.completed_steps = min(self.completed_steps + 1, self.total_steps)
+        with self._lock:
+            self.completed_steps = min(self.completed_steps + 1, self.total_steps)
 
         self._emit(stage, stage_name, recording_index, recording_name, working=False)
 
@@ -196,6 +199,7 @@ class BatchProgress:
         self.start_step(stage, stage_name, index, recording_name)
 
     def advance_pipeline(self, index: int, recording_name: str) -> None:
-        self.completed_steps = min(self.completed_steps + 1, self.total_steps)
+        with self._lock:
+            self.completed_steps = min(self.completed_steps + 1, self.total_steps)
 
         self._emit(4, "Done", index, recording_name, working=False)

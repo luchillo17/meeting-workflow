@@ -2,7 +2,7 @@
 name = "meeting-workflow"
 version = "0.1.0"
 description = "Local-first workflow for meeting recordings"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "Pillow>=10.0.0",
     "faster-whisper>=1.2.1",

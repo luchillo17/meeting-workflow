@@ -30,6 +30,33 @@ class ShutdownCoordinator:
         self._lock_path: Path | None = None
         self._graceful_exit_event = threading.Event()
         self._watchdog_started = False
+        self._resources_released = False
+        self._cleanup_callbacks: list[Callable[[], None]] = []
+        self._hard_exit_callbacks: list[Callable[[], None]] = []
+
+    def prepare_for_batch(self) -> None:
+        """Reset interrupt state so a new batch can run in the same process."""
+        with self._lock:
+            self._interrupt_requested = False
+            self._resources_released = False
+            self._watchdog_started = False
+            self._cleanup_callbacks.clear()
+            self._hard_exit_callbacks.clear()
+        self._graceful_exit_event.set()
+        self._graceful_exit_event.clear()
+
+    def register_hard_exit(self, callback: Callable[[], None]) -> None:
+        with self._lock:
+            self._hard_exit_callbacks.append(callback)
+
+    def _run_hard_exit_callbacks(self) -> None:
+        with self._lock:
+            callbacks = list(self._hard_exit_callbacks)
+        for callback in callbacks:
+            try:
+                callback()
+            except Exception:
+                pass
 
     def interrupt_requested(self) -> bool:
         return self._interrupt_requested
@@ -74,7 +101,7 @@ class ShutdownCoordinator:
             f"{_HARD_EXIT_SECONDS:.0f}s). Press Ctrl+C again to force quit.",
             file=sys.stderr,
         )
-        self.cleanup()
+        self._terminate_subprocesses()
         self._start_hard_exit_watchdog()
 
     def _start_hard_exit_watchdog(self) -> None:
@@ -89,6 +116,10 @@ class ShutdownCoordinator:
             while time.monotonic() < deadline:
                 if self._graceful_exit_event.wait(timeout=0.1):
                     return
+            if self._graceful_exit_event.is_set():
+                return
+            self._run_hard_exit_callbacks()
+            self.cleanup()
             os._exit(130)
 
         threading.Thread(target=_watchdog, daemon=True, name="batch-shutdown-watchdog").start()
@@ -122,11 +153,9 @@ class ShutdownCoordinator:
             pass
         self._lock_path = None
 
-    def cleanup(self) -> None:
+    def _terminate_subprocesses(self) -> None:
         with self._lock:
             subprocesses = list(self._subprocesses)
-            callbacks = list(self._cleanup_callbacks)
-
         for proc in subprocesses:
             if proc.poll() is not None:
                 continue
@@ -137,12 +166,16 @@ class ShutdownCoordinator:
                 proc.kill()
                 proc.wait(timeout=3)
 
+    def _run_cleanup_callbacks(self) -> None:
+        with self._lock:
+            callbacks = list(self._cleanup_callbacks)
         for callback in callbacks:
             try:
                 callback()
             except Exception:
                 pass
 
+    def _empty_cuda_cache(self) -> None:
         try:
             import torch
 
@@ -151,7 +184,15 @@ class ShutdownCoordinator:
         except ImportError:
             pass
         gc.collect()
-        self.release_batch_lock()
+
+    def cleanup(self) -> None:
+        with self._lock:
+            if self._resources_released:
+                return
+            self._resources_released = True
+        self._terminate_subprocesses()
+        self._run_cleanup_callbacks()
+        self._empty_cuda_cache()
 
     def check_interrupted(self) -> None:
         if self._interrupt_requested:
