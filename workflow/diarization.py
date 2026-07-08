@@ -5,11 +5,13 @@ from __future__ import annotations
 import gc
 import logging
 import os
+import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from workflow.shutdown import get_shutdown_coordinator
 from workflow.speaker_names import infer_speaker_names
 from workflow.utils import write_json
 
@@ -71,8 +73,48 @@ def resolve_hf_token(config: dict[str, Any]) -> str:
     return ""
 
 
+def _load_mono_waveform(audio_path: Path):
+    """Load mono/stereo WAV as (channels, time) float tensor without torchcodec."""
+    import torch
+
+    try:
+        import soundfile as sf
+    except ImportError as exc:
+        raise RuntimeError(
+            "Diarization requires soundfile for WAV loading. Run: uv sync --extra diarization"
+        ) from exc
+
+    data, sample_rate = sf.read(str(audio_path), dtype="float32", always_2d=True)
+    waveform = torch.from_numpy(data.T.copy())
+    if waveform.shape[0] > 1:
+        waveform = waveform.mean(dim=0, keepdim=True)
+    return waveform, int(sample_rate)
+
+
+def _extract_turns(diarization_output: Any) -> list[SpeakerTurn]:
+    """Normalize pyannote 3.x Annotation vs 4.x DiarizeOutput."""
+    if hasattr(diarization_output, "exclusive_speaker_diarization"):
+        annotation = diarization_output.exclusive_speaker_diarization
+    elif hasattr(diarization_output, "speaker_diarization"):
+        annotation = diarization_output.speaker_diarization
+    else:
+        annotation = diarization_output
+
+    turns: list[SpeakerTurn] = []
+    for segment, _track, speaker in annotation.itertracks(yield_label=True):
+        turns.append(
+            SpeakerTurn(
+                start=float(segment.start),
+                end=float(segment.end),
+                speaker=str(speaker),
+            )
+        )
+    return turns
+
+
 def run_pyannote_diarization(audio_path: Path, config: dict[str, Any]) -> list[SpeakerTurn]:
     """Run pyannote speaker-diarization on mono 16 kHz audio."""
+    warnings.filterwarnings("ignore", message=".*torchcodec.*", category=UserWarning)
     diar_cfg = config.get("diarization", {})
     model_id = str(diar_cfg.get("model", "pyannote/speaker-diarization-3.1"))
     token = resolve_hf_token(config)
@@ -92,11 +134,18 @@ def run_pyannote_diarization(audio_path: Path, config: dict[str, Any]) -> list[S
         ) from exc
 
     device_name = str(diar_cfg.get("device", "cuda"))
+    if device_name == "cuda":
+        from workflow.cuda_paths import ensure_cuda_dll_paths
+
+        ensure_cuda_dll_paths()
     if device_name == "cuda" and not torch.cuda.is_available():
         device_name = "cpu"
         logger.warning("CUDA unavailable for diarization; falling back to CPU")
 
-    pipeline = Pipeline.from_pretrained(model_id, use_auth_token=token)
+    try:
+        pipeline = Pipeline.from_pretrained(model_id, token=token)
+    except TypeError:
+        pipeline = Pipeline.from_pretrained(model_id, use_auth_token=token)
     pipeline.to(torch.device(device_name))
 
     kwargs: dict[str, Any] = {}
@@ -105,12 +154,9 @@ def run_pyannote_diarization(audio_path: Path, config: dict[str, Any]) -> list[S
     if (max_speakers := diar_cfg.get("max_speakers")) is not None:
         kwargs["max_speakers"] = int(max_speakers)
 
-    diarization = pipeline(str(audio_path), **kwargs)
-    turns: list[SpeakerTurn] = []
-    for turn, _track, speaker in diarization.itertracks(yield_label=True):
-        turns.append(
-            SpeakerTurn(start=float(turn.start), end=float(turn.end), speaker=str(speaker))
-        )
+    waveform, sample_rate = _load_mono_waveform(audio_path)
+    diarization = pipeline({"waveform": waveform, "sample_rate": sample_rate}, **kwargs)
+    turns = _extract_turns(diarization)
 
     del pipeline
     gc.collect()
@@ -151,6 +197,7 @@ def diarize_segments(
 
     runner = diarize_fn or run_pyannote_diarization
     try:
+        get_shutdown_coordinator().check_interrupted()
         turns = runner(audio_path, config)
     except RuntimeError as exc:
         logger.warning("Diarization skipped for %s: %s", audio_path.name, exc)

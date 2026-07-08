@@ -43,10 +43,30 @@ def _unix_nvidia_lib_dirs() -> list[Path]:
     return [path for path in (root / "cublas" / "lib", root / "cudnn" / "lib") if path.is_dir()]
 
 
+def _torch_library_dirs() -> list[Path]:
+    try:
+        import torch
+    except ImportError:
+        return []
+    torch_root = Path(torch.__file__).resolve().parent
+    return [path for path in (torch_root / "lib", torch_root) if path.is_dir()]
+
+
 def nvidia_library_dirs() -> list[Path]:
+    dirs = _torch_library_dirs()
     if sys.platform == "win32":
-        return _windows_nvidia_bin_dirs()
-    return _unix_nvidia_lib_dirs()
+        dirs.extend(_windows_nvidia_bin_dirs())
+    else:
+        dirs.extend(_unix_nvidia_lib_dirs())
+    seen: set[str] = set()
+    unique: list[Path] = []
+    for path in dirs:
+        key = str(path.resolve()).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(path)
+    return unique
 
 
 def _register_lib_dir(lib_dir: Path) -> None:

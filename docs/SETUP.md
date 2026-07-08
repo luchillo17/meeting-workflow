@@ -44,7 +44,7 @@ Project root:
 python3 scripts/install.py   # uv sync + setup
 # or:
 uv sync
-# optional speaker diarization (pyannote + torch):
+# optional speaker diarization (pyannote + CUDA PyTorch):
 uv sync --extra diarization
 uv run meeting-workflow setup
 ```
@@ -63,8 +63,10 @@ When `diarization.enabled: true` in `config.yaml` (default in repo):
 
 1. Accept model terms: [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
 2. Create a Hugging Face access token and set `HF_TOKEN` in `.env`
-3. Install extras: `uv sync --extra diarization`
+3. Install extras: `uv sync --extra diarization` (installs CUDA PyTorch on Windows/Linux)
 4. Re-transcribe pilots with `process --force` (extract-only does not add speakers)
+
+Batch runs print step-based progress (`Progress 12% | step 1/84 | stage 1/4 Transcript | …`) plus a Rich bar when stdout is a TTY. When piping to a log file, use the plain lines only. Press **Ctrl+C** once to stop gracefully — subprocesses are terminated and GPU models unloaded. If a GPU step is still running, the process exits within ~2s; press **Ctrl+C** again to force quit immediately. A `.batch.lock` file in `output/` prevents overlapping batch runs.
 
 `transcript.txt` will use `[Speaker 1]` / `[Speaker 2]` by default. The pipeline always tries to infer real names from speech (`[Sergio]` when found); labels stay `Speaker N` when not inferable. Optional `diarization.roster` in `config.yaml` helps match known attendees.
 

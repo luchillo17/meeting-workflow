@@ -6,7 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "Pillow>=10.0.0",
     "faster-whisper>=1.2.1",
-    "nvidia-cublas-cu12>=12.9.2.10; sys_platform != 'darwin'",
+    "nvidia-cublas-cu12>=12.4.5.8; sys_platform != 'darwin'",
     "nvidia-cudnn-cu12==9.*; sys_platform != 'darwin'",
     "pyyaml>=6.0.3",
     "rich>=15.0.0",
@@ -14,9 +14,10 @@ dependencies = [
 
 [project.optional-dependencies]
 diarization = [
-    "pyannote.audio>=3.1.1",
-    "torch>=2.2.0",
-    "torchaudio>=2.2.0",
+    "pyannote.audio>=4.0.7,<5",
+    "soundfile>=0.12.1",
+    "torch",
+    "torchaudio",
 ]
 
 [project.scripts]
@@ -31,6 +32,19 @@ packages = ["workflow"]
 
 [tool.uv]
 package = true
+override-dependencies = [
+    "torch==2.5.1+cu124; sys_platform != 'darwin'",
+    "torchaudio==2.5.1+cu124; sys_platform != 'darwin'",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124", marker = "sys_platform != 'darwin'" }
+torchaudio = { index = "pytorch-cu124", marker = "sys_platform != 'darwin'" }
 
 [dependency-groups]
 dev = [

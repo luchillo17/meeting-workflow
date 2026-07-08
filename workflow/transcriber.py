@@ -10,6 +10,7 @@ from typing import Any
 
 from workflow.cuda_paths import ensure_cuda_dll_paths
 from workflow.diarization import DiarizeFn, diarize_segments
+from workflow.shutdown import get_shutdown_coordinator
 from workflow.transcript_filters import filter_hallucination_segments
 from workflow.transcript_format import segments_to_display_text
 from workflow.utils import run_cmd, write_json
@@ -82,6 +83,7 @@ class WhisperTranscriber:
     def transcribe(
         self, recording: Path, output_dir: Path, *, unload_after: bool = True
     ) -> WhisperTranscript:
+        get_shutdown_coordinator().check_interrupted()
         output_dir.mkdir(parents=True, exist_ok=True)
         audio_path = output_dir / "audio.wav"
         self._extract_audio(recording, audio_path)
@@ -145,7 +147,9 @@ class WhisperTranscriber:
         model = self._get_model()
         raw_segments, _info = model.transcribe(str(audio_path), **self._transcribe_options)
         segments: list[dict] = []
+        shutdown = get_shutdown_coordinator()
         for segment in raw_segments:
+            shutdown.check_interrupted()
             text = segment.text.strip()
             if not text:
                 continue
@@ -155,6 +159,7 @@ class WhisperTranscriber:
             segments = filter_hallucination_segments(segments, language=self._language)
 
         if self._diarization_enabled:
+            shutdown.check_interrupted()
             self._unload_model()
             segments = diarize_segments(
                 audio_path,

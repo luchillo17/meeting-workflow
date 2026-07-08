@@ -14,3 +14,5 @@
 Epic [#1](https://github.com/luchillo17/meeting-workflow/issues/1) **closed** — v1 delivered.
 
 Post-v1 delivered: batch ([#13](https://github.com/luchillo17/meeting-workflow/pull/13)), map-reduce ([#14](https://github.com/luchillo17/meeting-workflow/pull/14)), pilot validation ([#15](https://github.com/luchillo17/meeting-workflow/pull/15)), publish ([#16](https://github.com/luchillo17/meeting-workflow/pull/16)), folder scan ([#17](https://github.com/luchillo17/meeting-workflow/pull/17)), inbox ([#18](https://github.com/luchillo17/meeting-workflow/pull/18)), eval + vision tuning ([#19](https://github.com/luchillo17/meeting-workflow/pull/19)). Quality decisions: [ADRs 0004–0008](../adr/). Next: UI — see [knowledge-delivery.md](../inspiration/knowledge-delivery.md).
+
+Backlog: [ADR 0010](../adr/0010-batch-run-statistics.md) (uncommitted) — batch run performance/quality statistics; [issue 08](08-batch-progress-multiline.md) — multiline progress display (after current batch).

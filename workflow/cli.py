@@ -27,6 +27,7 @@ from workflow.scan import (
     scan_recordings,
 )
 from workflow.settings import Settings
+from workflow.shutdown import BatchInterrupted, get_shutdown_coordinator
 from workflow.transcriber import WhisperTranscriber
 from workflow.utils import invalidate_downstream_artifacts, slugify
 from workflow.vision import OllamaVisionAnalyzer
@@ -291,6 +292,8 @@ def _run_workflow_batch(
     if extract_only and vision_only:
         print("Error: use only one of --extract-only or --vision-only", file=sys.stderr)
         return 1
+    shutdown = get_shutdown_coordinator()
+    shutdown.install_handlers()
     config = _config_with_env(settings)
     transcriber = WhisperTranscriber(config)
     runner = WorkflowRunner(
@@ -307,6 +310,9 @@ def _run_workflow_batch(
             extract_only=extract_only,
             vision_only=vision_only,
         )
+    except BatchInterrupted:
+        print("Batch stopped.", file=sys.stderr)
+        return 130
     except (FileNotFoundError, RuntimeError, ValueError, OSError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
