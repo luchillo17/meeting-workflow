@@ -7,10 +7,14 @@ against that signal:
 
 - Vision prompt skips participant-only tiles; extraction filters tile-only descriptions.
 - Frame dedup blurs active-speaker highlight rings (`dedup_layout_blur`, `dedup_global`).
-- Transcript segments are `{start, end, text}` only — no diarization.
+- We do **not** infer who spoke from video tiles or roster OCR.
 
-**Decision:** v1 is post-recording `.mp4` only. No meeting bot, no pyannote diarization,
-no video-based speaker-to-name mapping.
+**Decision:** v1 is post-recording `.mp4` only. No meeting bot, no **video-based**
+speaker-to-name mapping.
 
-**Future (if needed):** calendar roster hints → audio diarization → live bot/API speaking
-events — in that order, not Teams highlight chasing first.
+**Audio diarization (separate):** optional pyannote pass labels transcript segments
+as `Speaker 1`, `Speaker 2`, … — see [ADR 0009](0009-audio-speaker-diarization.md).
+That is not the same as Teams highlight attribution.
+
+**Future (if needed):** calendar roster hints → map `Speaker N` to names → live
+bot/API speaking events — in that order, not Teams highlight chasing first.

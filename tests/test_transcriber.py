@@ -176,6 +176,37 @@ def test_transcribe_filters_hallucination_phrases(tmp_path: Path) -> None:
     assert len(result.segments) == 1
 
 
+def test_transcribe_diarization_labels_segments(tmp_path: Path) -> None:
+    from workflow.diarization import SpeakerTurn
+
+    recording = tmp_path / "meeting.mp4"
+    recording.write_bytes(b"fake-video")
+    output_dir = tmp_path / "out"
+
+    def fake_diarize(_audio: Path, _config: dict) -> list[SpeakerTurn]:
+        return [
+            SpeakerTurn(0.0, 2.5, "SPEAKER_00"),
+            SpeakerTurn(2.5, 5.0, "SPEAKER_01"),
+        ]
+
+    transcriber = WhisperTranscriber(
+        {
+            "whisper": {"model": "tiny", "device": "cpu", "compute_type": "int8", "language": "es"},
+            "diarization": {"enabled": True},
+        },
+        run_cmd_fn=_fake_run_cmd,
+        model_factory=lambda *_a, **_k: FakeWhisperModel(),
+        diarize_fn=fake_diarize,
+    )
+
+    result = transcriber.transcribe(recording, output_dir)
+
+    assert result.segments[0]["speaker"] == "Speaker 1"
+    assert result.segments[1]["speaker"] == "Speaker 2"
+    assert "[Speaker 1]" in result.text
+    assert "[Speaker 2]" in result.text
+
+
 def test_transcribe_passes_vad_options_to_model(tmp_path: Path) -> None:
     recording = tmp_path / "meeting.mp4"
     recording.write_bytes(b"fake-video")

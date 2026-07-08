@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from workflow.cuda_paths import ensure_cuda_dll_paths
-from workflow.transcript_filters import filter_hallucination_segments, join_segment_texts
+from workflow.diarization import DiarizeFn, diarize_segments
+from workflow.transcript_filters import filter_hallucination_segments
+from workflow.transcript_format import segments_to_display_text
 from workflow.utils import run_cmd, write_json
 
 
@@ -55,8 +57,10 @@ class WhisperTranscriber:
         *,
         run_cmd_fn: Callable[..., object] = run_cmd,
         model_factory: Callable[..., object] | None = None,
+        diarize_fn: DiarizeFn | None = None,
     ) -> None:
         whisper_cfg = config.get("whisper", {})
+        diar_cfg = config.get("diarization", {})
         self._config = config
         self._model_name = whisper_cfg.get("model", "large-v3")
         self._device = whisper_cfg.get("device", "cuda")
@@ -64,6 +68,8 @@ class WhisperTranscriber:
         self._language = whisper_cfg.get("language", "es")
         self._filter_hallucinations = whisper_cfg.get("filter_hallucination_phrases", True)
         self._transcribe_options = build_whisper_transcribe_options(config)
+        self._diarization_enabled = bool(diar_cfg.get("enabled", False))
+        self._diarize_fn = diarize_fn
         self._run_cmd = run_cmd_fn
         self._model_factory = model_factory
         self._model: object | None = None
@@ -80,7 +86,7 @@ class WhisperTranscriber:
         audio_path = output_dir / "audio.wav"
         self._extract_audio(recording, audio_path)
         try:
-            segments, text = self._run_whisper(audio_path)
+            segments, text = self._run_whisper(audio_path, output_dir)
             result = WhisperTranscript(segments=segments, text=text)
             write_json(output_dir / "transcript.json", {"segments": result.segments})
             (output_dir / "transcript.txt").write_text(result.text, encoding="utf-8")
@@ -135,7 +141,7 @@ class WhisperTranscriber:
                 )
         return self._model
 
-    def _run_whisper(self, audio_path: Path) -> tuple[list[dict], str]:
+    def _run_whisper(self, audio_path: Path, output_dir: Path) -> tuple[list[dict], str]:
         model = self._get_model()
         raw_segments, _info = model.transcribe(str(audio_path), **self._transcribe_options)
         segments: list[dict] = []
@@ -148,7 +154,17 @@ class WhisperTranscriber:
         if self._filter_hallucinations:
             segments = filter_hallucination_segments(segments, language=self._language)
 
-        return segments, join_segment_texts(segments)
+        if self._diarization_enabled:
+            self._unload_model()
+            segments = diarize_segments(
+                audio_path,
+                segments,
+                self._config,
+                diarize_fn=self._diarize_fn,
+                output_dir=output_dir,
+            )
+
+        return segments, segments_to_display_text(segments)
 
     def _unload_model(self) -> None:
         if self._model is not None:
