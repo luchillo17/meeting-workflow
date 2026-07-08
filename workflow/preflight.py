@@ -243,6 +243,27 @@ def run_preflight(project_root: Path | None = None) -> list[Check]:
                         "missing — run: uv sync --extra diarization",
                     )
                 )
+            diar_device = str(diar_cfg.get("device", "cuda"))
+            if diar_device == "cuda":
+                try:
+                    ensure_cuda_dll_paths()
+                    import torch
+
+                    if torch.cuda.is_available():
+                        device_name = torch.cuda.get_device_name(0)
+                        checks.append(
+                            Check("pytorch cuda", "ok", f"diarization GPU: {device_name}")
+                        )
+                    else:
+                        checks.append(
+                            Check(
+                                "pytorch cuda",
+                                "fail",
+                                "torch has no CUDA — reinstall: uv sync --extra diarization",
+                            )
+                        )
+                except ImportError:
+                    checks.append(Check("pytorch cuda", "fail", "torch not installed"))
 
     return checks
 

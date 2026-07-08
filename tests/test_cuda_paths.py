@@ -16,6 +16,7 @@ def test_windows_registers_nvidia_bin_dirs(monkeypatch) -> None:
         "workflow.cuda_paths._windows_nvidia_bin_dirs",
         lambda: [Path("C:/fake/nvidia/cublas/bin"), Path("C:/fake/nvidia/cudnn/bin")],
     )
+    monkeypatch.setattr("workflow.cuda_paths._torch_library_dirs", lambda: [])
 
     with patch("workflow.cuda_paths.os.add_dll_directory", side_effect=lambda p: added.append(p)):
         with patch.dict("os.environ", {}, clear=False):

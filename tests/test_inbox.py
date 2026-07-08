@@ -17,7 +17,9 @@ def test_published_source_slugs_reads_frontmatter(tmp_path: Path) -> None:
         summary_body="# MVP\n",
         source_slug="revision-avances-mvp-20260514",
     )
-    (meetings_dir / "2026-05-14-revision-avances-mvp.md").write_text(brief, encoding="utf-8")
+    bundle_dir = meetings_dir / "2026-05-14-revision-avances-mvp"
+    bundle_dir.mkdir(parents=True)
+    (bundle_dir / "brief.md").write_text(brief, encoding="utf-8")
     assert published_source_slugs(meetings_dir) == {"revision-avances-mvp-20260514"}
 
 
@@ -36,7 +38,9 @@ def test_discover_unpublished_skips_already_published(tmp_path: Path) -> None:
         source_slug=published_dir.name,
     )
     meetings_dir.mkdir(parents=True)
-    (meetings_dir / "2026-01-01-done.md").write_text(brief, encoding="utf-8")
+    bundle_dir = meetings_dir / "2026-01-01-done"
+    bundle_dir.mkdir()
+    (bundle_dir / "brief.md").write_text(brief, encoding="utf-8")
 
     assert discover_unpublished(output_root, meetings_dir) == [pending_dir]
 
@@ -73,5 +77,7 @@ def test_publish_targets_writes_briefs(tmp_path: Path) -> None:
 
     paths = publish_targets([output_dir], meetings_dir)
     assert len(paths) == 1
-    assert paths[0].is_file()
+    assert paths[0].name == "brief.md"
+    bundle_dir = meetings_dir / "2026-01-01-meeting"
+    assert (bundle_dir / "extraction.json").is_file()
     assert (meetings_dir / "index.md").is_file()
