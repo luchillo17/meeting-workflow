@@ -13,6 +13,8 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from filelock import FileLock, Timeout
+
 _HARD_EXIT_SECONDS = 1.5
 
 
@@ -27,11 +29,11 @@ class ShutdownCoordinator:
         self._subprocesses: list[subprocess.Popen[str]] = []
         self._interrupt_requested = False
         self._handlers_installed = False
-        self._lock_path: Path | None = None
+        self._batch_lock_guard = threading.Lock()
+        self._batch_lock: FileLock | None = None
         self._graceful_exit_event = threading.Event()
         self._watchdog_started = False
         self._resources_released = False
-        self._cleanup_callbacks: list[Callable[[], None]] = []
         self._hard_exit_callbacks: list[Callable[[], None]] = []
 
     def prepare_for_batch(self) -> None:
@@ -125,33 +127,24 @@ class ShutdownCoordinator:
         threading.Thread(target=_watchdog, daemon=True, name="batch-shutdown-watchdog").start()
 
     def acquire_batch_lock(self, output_dir: Path) -> None:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        lock_path = output_dir / ".batch.lock"
-        if lock_path.is_file():
+        with self._batch_lock_guard:
+            message = f"Another batch is already running for {output_dir}"
+            if self._batch_lock is not None:
+                raise RuntimeError(message)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            # The watchdog may release a lock acquired by the main thread.
+            lock = FileLock(str(output_dir / ".batch.lock"), thread_local=False)
             try:
-                old_pid = int(lock_path.read_text(encoding="utf-8").strip())
-            except ValueError:
-                old_pid = -1
-            if old_pid > 0 and _process_alive(old_pid) and old_pid != os.getpid():
-                raise RuntimeError(
-                    f"Another batch is already running (PID {old_pid}). "
-                    f"Stop it first: Stop-Process -Id {old_pid} -Force"
-                )
-            lock_path.unlink(missing_ok=True)
-        lock_path.write_text(str(os.getpid()), encoding="utf-8")
-        self._lock_path = lock_path
+                lock.acquire(timeout=0)
+            except Timeout as exc:
+                raise RuntimeError(message) from exc
+            self._batch_lock = lock
 
     def release_batch_lock(self) -> None:
-        if self._lock_path is None:
-            return
-        try:
-            if self._lock_path.is_file():
-                current = self._lock_path.read_text(encoding="utf-8").strip()
-                if current == str(os.getpid()):
-                    self._lock_path.unlink(missing_ok=True)
-        except OSError:
-            pass
-        self._lock_path = None
+        with self._batch_lock_guard:
+            if self._batch_lock is not None:
+                self._batch_lock.release()
+                self._batch_lock = None
 
     def _terminate_subprocesses(self) -> None:
         with self._lock:
@@ -205,21 +198,3 @@ _coordinator = ShutdownCoordinator()
 
 def get_shutdown_coordinator() -> ShutdownCoordinator:
     return _coordinator
-
-
-def _process_alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    if sys.platform == "win32":
-        result = subprocess.run(
-            ["tasklist", "/FI", f"PID eq {pid}"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        return str(pid) in result.stdout
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    return True

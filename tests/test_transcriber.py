@@ -4,11 +4,26 @@ from __future__ import annotations
 
 import json
 import subprocess
+import wave
 from pathlib import Path
 
 import pytest
 
 from workflow.transcriber import WhisperTranscriber, build_whisper_transcribe_options
+
+
+def test_faster_whisper_decodes_pcm_wav(tmp_path: Path) -> None:
+    from faster_whisper.audio import decode_audio
+
+    audio_path = tmp_path / "audio.wav"
+    with wave.open(str(audio_path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16_000)
+        wav.writeframes(b"\x00\x00" * 1_600)
+
+    samples = decode_audio(str(audio_path))
+    assert samples.shape == (1_600,)
 
 
 class FakeSegment:

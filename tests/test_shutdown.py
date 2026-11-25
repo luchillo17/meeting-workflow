@@ -31,19 +31,23 @@ def test_second_interrupt_force_exits(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_batch_lock_acquire_and_release(tmp_path: Path) -> None:
     coordinator = ShutdownCoordinator()
+    contender = ShutdownCoordinator()
     coordinator.acquire_batch_lock(tmp_path)
-    lock_path = tmp_path / ".batch.lock"
-    assert lock_path.is_file()
+    with pytest.raises(RuntimeError, match="Another batch is already running"):
+        coordinator.acquire_batch_lock(tmp_path)
+    with pytest.raises(RuntimeError, match="Another batch is already running"):
+        contender.acquire_batch_lock(tmp_path)
     coordinator.release_batch_lock()
-    assert not lock_path.is_file()
+    contender.acquire_batch_lock(tmp_path)
+    contender.release_batch_lock()
 
 
-def test_batch_lock_rejects_stale_file(tmp_path: Path) -> None:
+def test_batch_lock_reuses_unheld_legacy_lock_file(tmp_path: Path) -> None:
     lock_path = tmp_path / ".batch.lock"
     lock_path.write_text("99999999", encoding="utf-8")
     coordinator = ShutdownCoordinator()
     coordinator.acquire_batch_lock(tmp_path)
-    assert lock_path.read_text(encoding="utf-8") != "99999999"
+    coordinator.release_batch_lock()
 
 
 def test_cleanup_runs_registered_callbacks() -> None:
@@ -58,9 +62,9 @@ def test_cleanup_runs_registered_callbacks() -> None:
 def test_cleanup_does_not_release_batch_lock(tmp_path: Path) -> None:
     coordinator = ShutdownCoordinator()
     coordinator.acquire_batch_lock(tmp_path)
-    lock_path = tmp_path / ".batch.lock"
     coordinator.cleanup()
-    assert lock_path.is_file()
+    with pytest.raises(RuntimeError, match="Another batch is already running"):
+        ShutdownCoordinator().acquire_batch_lock(tmp_path)
     coordinator.release_batch_lock()
 
 

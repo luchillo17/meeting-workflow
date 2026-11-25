@@ -18,6 +18,6 @@ between transcript, vision, and extraction.
 
 - ~$0 marginal API cost per meeting; HF token required for pyannote model download
 - Pilot throughput is bounded by single-machine GPU and sequential stages
-- CUDA DLL paths and torch+cu124 pins are part of setup (`docs/SETUP.md`)
+- CUDA DLL paths and CUDA 12.6 PyTorch wheels are part of setup (`docs/SETUP.md`)
 - Batch statistics stay on local disk ([ADR 0010](0010-batch-run-statistics.md));
   no cloud metrics in v1

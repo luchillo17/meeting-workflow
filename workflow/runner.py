@@ -16,7 +16,7 @@ from workflow.batch_stats import BatchRunRecorder
 from workflow.frames import frames_bundle_valid, load_frame_paths, load_transcript_for_frames
 from workflow.ports import Extractor, FrameExtractor, Transcriber, TranscriptResult, VisionAnalyzer
 from workflow.settings import Settings
-from workflow.shutdown import BatchInterrupted, get_shutdown_coordinator
+from workflow.shutdown import BatchInterrupted, ShutdownCoordinator, get_shutdown_coordinator
 from workflow.utils import invalidate_downstream_artifacts, slugify
 
 
@@ -63,6 +63,32 @@ class WorkflowRunner:
     ) -> list[Path]:
         if extract_only and vision_only:
             raise ValueError("Use only one of extract_only or vision_only")
+        if not recording_paths:
+            return []
+
+        shutdown = get_shutdown_coordinator()
+        shutdown.acquire_batch_lock(self.settings.output_dir)
+        try:
+            shutdown.prepare_for_batch()
+            return self._run_locked_batch(
+                recording_paths,
+                shutdown,
+                force=force,
+                extract_only=extract_only,
+                vision_only=vision_only,
+            )
+        finally:
+            shutdown.release_batch_lock()
+
+    def _run_locked_batch(
+        self,
+        recording_paths: list[Path],
+        shutdown: ShutdownCoordinator,
+        *,
+        force: bool,
+        extract_only: bool,
+        vision_only: bool,
+    ) -> list[Path]:
         jobs = self._prepare_jobs(
             recording_paths,
             force=force,
@@ -88,9 +114,6 @@ class WorkflowRunner:
         self.console.print(f"[bold]{label}[/bold] ({count} recording(s)){workers_note}")
 
         stage_count = self._stage_count(extract_only=extract_only, vision_only=vision_only)
-        shutdown = get_shutdown_coordinator()
-        shutdown.prepare_for_batch()
-        shutdown.acquire_batch_lock(self.settings.output_dir)
         self._register_shutdown_cleanup()
         recorder = BatchRunRecorder(
             self.settings.output_dir,
@@ -145,9 +168,6 @@ class WorkflowRunner:
                 recorder, jobs, status="completed", progress=progress
             )
             self.console.print(f"[dim]Run stats[/dim] -> {run_path}")
-        finally:
-            shutdown.release_batch_lock()
-
         for job in jobs:
             self.console.print(f"[green]Done[/green] -> {job.output_dir}")
         return [job.output_dir for job in jobs]
@@ -176,14 +196,9 @@ class WorkflowRunner:
 
     def _register_hard_interrupt_handler(
         self,
-        shutdown: object,
+        shutdown: ShutdownCoordinator,
         batch_state: dict[str, object],
     ) -> None:
-        from workflow.shutdown import ShutdownCoordinator
-
-        if not isinstance(shutdown, ShutdownCoordinator):
-            return
-
         def _on_hard_exit() -> None:
             recorder = batch_state.get("recorder")
             jobs = batch_state.get("jobs")

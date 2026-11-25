@@ -214,7 +214,7 @@ def _build_parser() -> argparse.ArgumentParser:
     inbox_cmd.add_argument(
         "--eval",
         action="store_true",
-        help="Run pilot eval after processing (warn only; does not block publish)",
+        help="Run pilot regression checks after processing and before publishing",
     )
     inbox_cmd.add_argument(
         "--dry-run",
@@ -464,9 +464,11 @@ def cmd_frames(args: argparse.Namespace) -> int:
 
 
 def cmd_eval(args: argparse.Namespace) -> int:
-    console = Console()
     settings = Settings.load()
-    output_root = args.output_dir or settings.output_dir
+    return _run_pilot_eval(args.output_dir or settings.output_dir, Console())
+
+
+def _run_pilot_eval(output_root: Path, console: Console) -> int:
     failures = evaluate_pilot_outputs(output_root)
     if not failures:
         console.print(f"[green]Pilot eval passed[/green] for {output_root}")
@@ -580,7 +582,6 @@ def cmd_inbox(args: argparse.Namespace) -> int:
             console.print(f"  [cyan]would publish[/cyan] {output_dir.name}")
         return 0
 
-    exit_code = 0
     if plan.pending and not args.skip_process:
         ensure_cuda_dll_paths()
         console.print(f"[cyan]Processing[/cyan] {len(plan.pending)} pending recording(s)")
@@ -593,6 +594,11 @@ def cmd_inbox(args: argparse.Namespace) -> int:
             args.meetings_dir,
             recursive=args.recursive,
         )
+
+    if args.eval:
+        exit_code = _run_pilot_eval(settings.output_dir, console)
+        if exit_code != 0:
+            return exit_code
 
     if plan.unpublished:
         try:
@@ -611,16 +617,7 @@ def cmd_inbox(args: argparse.Namespace) -> int:
     else:
         console.print("[dim]No new extractions to publish[/dim]")
 
-    if args.eval:
-        failures = evaluate_pilot_outputs(settings.output_dir)
-        if failures:
-            console.print("[yellow]Pilot eval reported issues[/yellow]")
-            for failure in failures:
-                console.print(f"  - {failure}")
-        else:
-            console.print(f"[green]Pilot eval passed[/green] for {settings.output_dir}")
-
-    return exit_code
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:

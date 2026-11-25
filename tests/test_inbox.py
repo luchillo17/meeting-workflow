@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from workflow.cli import main
 from workflow.inbox import plan_inbox, publish_targets
 from workflow.publish import build_publish_markdown, discover_unpublished, published_source_slugs
 from workflow.utils import slugify, write_json
@@ -81,3 +84,27 @@ def test_publish_targets_writes_briefs(tmp_path: Path) -> None:
     bundle_dir = meetings_dir / "2026-01-01-meeting"
     assert (bundle_dir / "extraction.json").is_file()
     assert (meetings_dir / "index.md").is_file()
+
+
+def test_inbox_eval_failure_blocks_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OUTPUT_DIR", str(tmp_path / "output"))
+    (tmp_path / "config.yaml").write_text("{}", encoding="utf-8")
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    (inbox / "meeting.mp4").touch()
+    output = tmp_path / "output" / "meeting"
+    output.mkdir(parents=True)
+    write_json(output / "extraction.json", {"meeting_date": "2026-01-01", "topic": "Test"})
+    (output / "summary.md").write_text("# Test\n", encoding="utf-8")
+    meetings = tmp_path / "published"
+
+    args = ["inbox", "--folder", str(inbox), "--meetings-dir", str(meetings)]
+    assert main([*args, "--eval"]) == 1
+    assert "Pilot eval failed" in capsys.readouterr().out
+    assert not meetings.exists()
+
+    assert main(args) == 0
+    assert (meetings / "2026-01-01-meeting" / "brief.md").is_file()
