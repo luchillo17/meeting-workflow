@@ -15,15 +15,31 @@ def load_config(path: Path) -> dict:
         return yaml.safe_load(f)
 
 
-def run_cmd(cmd: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess:
-    result = subprocess.run(
+def run_cmd(cmd: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    from workflow.shutdown import BatchInterrupted, get_shutdown_coordinator
+
+    shutdown = get_shutdown_coordinator()
+    shutdown.check_interrupted()
+
+    proc = subprocess.Popen(
         cmd,
         cwd=cwd,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
         errors="replace",
     )
+    shutdown.track_subprocess(proc)
+    try:
+        stdout, stderr = proc.communicate()
+    finally:
+        shutdown.untrack_subprocess(proc)
+
+    if shutdown.interrupt_requested():
+        raise BatchInterrupted("Batch cancelled")
+
+    result = subprocess.CompletedProcess(cmd, proc.returncode or 0, stdout, stderr)
     if result.returncode != 0:
         raise RuntimeError(
             f"Command failed ({result.returncode}): {' '.join(cmd)}\n"

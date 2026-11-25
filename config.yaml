@@ -49,6 +49,10 @@ diarization:
   # min_speakers: 2
   # max_speakers: 6
 
+batch:
+  pipeline_workers: 1 # keep sequential when GPU-bound (whisper + diarization + Ollama)
+  frame_workers: 1 # ffmpeg frames are light; parallel CPU work steals cores from GPU host code
+
 frames:
   scene_threshold: 0.25 # lower catches video-call tile/layout changes (e.g. someone joining)
   interval_seconds: 60 # gap-fill step when no scene/cue for a long stretch

@@ -12,6 +12,7 @@ from pathlib import Path
 from workflow.extraction import is_low_value_visual_description, sanitize_visual_description
 from workflow.ollama_client import OllamaClient, resolve_ollama_settings
 from workflow.output_language import language_display_name, resolve_output_language
+from workflow.shutdown import get_shutdown_coordinator
 from workflow.utils import invalidate_downstream_artifacts, write_json
 
 logger = logging.getLogger(__name__)
@@ -88,7 +89,9 @@ class OllamaVisionAnalyzer:
         timestamps = self._load_timestamps(output_dir)
         visual: list[dict] = []
         try:
+            shutdown = get_shutdown_coordinator()
             for frame_path in frame_paths:
+                shutdown.check_interrupted()
                 if not frame_path.is_file():
                     continue
                 frame_type, description = self._describe_frame(frame_path)

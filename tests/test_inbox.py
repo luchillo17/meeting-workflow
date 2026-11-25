@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from workflow.cli import main
 from workflow.inbox import plan_inbox, publish_targets
 from workflow.publish import build_publish_markdown, discover_unpublished, published_source_slugs
 from workflow.utils import slugify, write_json
@@ -17,7 +20,9 @@ def test_published_source_slugs_reads_frontmatter(tmp_path: Path) -> None:
         summary_body="# MVP\n",
         source_slug="revision-avances-mvp-20260514",
     )
-    (meetings_dir / "2026-05-14-revision-avances-mvp.md").write_text(brief, encoding="utf-8")
+    bundle_dir = meetings_dir / "2026-05-14-revision-avances-mvp"
+    bundle_dir.mkdir(parents=True)
+    (bundle_dir / "brief.md").write_text(brief, encoding="utf-8")
     assert published_source_slugs(meetings_dir) == {"revision-avances-mvp-20260514"}
 
 
@@ -36,7 +41,9 @@ def test_discover_unpublished_skips_already_published(tmp_path: Path) -> None:
         source_slug=published_dir.name,
     )
     meetings_dir.mkdir(parents=True)
-    (meetings_dir / "2026-01-01-done.md").write_text(brief, encoding="utf-8")
+    bundle_dir = meetings_dir / "2026-01-01-done"
+    bundle_dir.mkdir()
+    (bundle_dir / "brief.md").write_text(brief, encoding="utf-8")
 
     assert discover_unpublished(output_root, meetings_dir) == [pending_dir]
 
@@ -73,5 +80,31 @@ def test_publish_targets_writes_briefs(tmp_path: Path) -> None:
 
     paths = publish_targets([output_dir], meetings_dir)
     assert len(paths) == 1
-    assert paths[0].is_file()
+    assert paths[0].name == "brief.md"
+    bundle_dir = meetings_dir / "2026-01-01-meeting"
+    assert (bundle_dir / "extraction.json").is_file()
     assert (meetings_dir / "index.md").is_file()
+
+
+def test_inbox_eval_failure_blocks_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OUTPUT_DIR", str(tmp_path / "output"))
+    (tmp_path / "config.yaml").write_text("{}", encoding="utf-8")
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    (inbox / "meeting.mp4").touch()
+    output = tmp_path / "output" / "meeting"
+    output.mkdir(parents=True)
+    write_json(output / "extraction.json", {"meeting_date": "2026-01-01", "topic": "Test"})
+    (output / "summary.md").write_text("# Test\n", encoding="utf-8")
+    meetings = tmp_path / "published"
+
+    args = ["inbox", "--folder", str(inbox), "--meetings-dir", str(meetings)]
+    assert main([*args, "--eval"]) == 1
+    assert "Pilot eval failed" in capsys.readouterr().out
+    assert not meetings.exists()
+
+    assert main(args) == 0
+    assert (meetings / "2026-01-01-meeting" / "brief.md").is_file()

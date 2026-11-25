@@ -65,7 +65,7 @@ Meeting recordings hold decisions, action items, whiteboarding — but raw video
 - **Structured Extraction:** Ollama Qwen2.5 text; JSON schema: meeting_date, topic, key_decisions, action_items, blockers_risks, status_updates, technical_details, open_questions, next_steps, visual_content. English prompts; string values in `output.language`
 - **Summary:** markdown from Structured Extraction JSON
 - **Config:** `.env` paths + Ollama URL/models; `config.yaml` whisper, frame, cue settings
-- **Docs:** CONTEXT.md + ADRs (local-first GPU, hybrid vision v1, filesystem idempotency, optional owners, no speaker attribution, pilot eval guards, map-reduce extraction, deterministic grounding)
+- **Docs:** CONTEXT.md + ADRs (local-first GPU, hybrid vision v1, filesystem idempotency, optional owners, no speaker attribution, pilot eval guards, map-reduce extraction, deterministic grounding, audio diarization, batch run statistics)
 
 ## Testing Decisions
 

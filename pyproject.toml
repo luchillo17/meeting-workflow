@@ -2,11 +2,14 @@
 name = "meeting-workflow"
 version = "0.1.0"
 description = "Local-first workflow for meeting recordings"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
-    "Pillow>=10.0.0",
+    "Pillow>=12.1.0",
+    # Faster Whisper 1.2.1 passes metadata_errors to av.open(), removed in PyAV 19.
+    "av>=11,<19",
     "faster-whisper>=1.2.1",
-    "nvidia-cublas-cu12>=12.9.2.10; sys_platform != 'darwin'",
+    "filelock>=3.29.5,<5",
+    "nvidia-cublas-cu12>=12.4.5.8; sys_platform != 'darwin'",
     "nvidia-cudnn-cu12==9.*; sys_platform != 'darwin'",
     "pyyaml>=6.0.3",
     "rich>=15.0.0",
@@ -14,9 +17,10 @@ dependencies = [
 
 [project.optional-dependencies]
 diarization = [
-    "pyannote.audio>=3.1.1",
-    "torch>=2.2.0",
-    "torchaudio>=2.2.0",
+    "pyannote.audio>=4.0.7,<5",
+    "soundfile>=0.12.1",
+    "torch>=2.11,<2.12",
+    "torchaudio>=2.11,<2.12",
 ]
 
 [project.scripts]
@@ -31,6 +35,15 @@ packages = ["workflow"]
 
 [tool.uv]
 package = true
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu126", marker = "sys_platform != 'darwin'" }
+torchaudio = { index = "pytorch-cu126", marker = "sys_platform != 'darwin'" }
 
 [dependency-groups]
 dev = [
@@ -52,7 +65,7 @@ pyyaml = "yaml"
 [tool.deptry.per_rule_ignores]
 # Transitive runtime deps of faster-whisper; imported lazily for GPU checks/cleanup.
 DEP001 = ["ctranslate2", "torch", "pyannote"]
-DEP002 = ["pyannote.audio", "torchaudio"]
+DEP002 = ["av", "pyannote.audio", "torchaudio"]
 DEP003 = ["ctranslate2", "torch", "pyannote"]
 
 [tool.ruff]

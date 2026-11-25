@@ -39,9 +39,17 @@ def publish_targets(
     targets: list[Path],
     meetings_dir: Path,
     *,
-    include_json: bool = False,
+    include_json: bool = True,
+    include_bundle: bool = True,
 ) -> list[Path]:
     published: list[Path] = []
     for output_dir in targets:
-        published.append(publish_output_dir(output_dir, meetings_dir, include_json=include_json))
+        published.append(
+            publish_output_dir(
+                output_dir,
+                meetings_dir,
+                include_json=include_json,
+                include_bundle=include_bundle,
+            )
+        )
     return published

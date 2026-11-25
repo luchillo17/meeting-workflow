@@ -9,6 +9,7 @@ import pytest
 
 from workflow.runner import WorkflowRunner
 from workflow.settings import Settings
+from workflow.shutdown import ShutdownCoordinator
 from workflow.summary import render_summary
 from workflow.utils import slugify, write_json
 
@@ -124,6 +125,38 @@ def _runner(
     extractor = CountingExtractor()
     runner = WorkflowRunner(settings, transcriber, frames, vision, extractor)
     return runner, transcriber, settings
+
+
+@pytest.mark.parametrize(
+    "options", [{"force": True}, {"extract_only": True}, {"vision_only": True}]
+)
+def test_rejected_rerun_preserves_active_extraction(tmp_path: Path, options: dict) -> None:
+    recording = tmp_path / "meeting.mp4"
+    recording.touch()
+    runner, _, settings = _runner(tmp_path, recording)
+    output = settings.extraction_dir(recording.name)
+    output.mkdir(parents=True)
+    extraction = output / "extraction.json"
+    extraction.write_text("original", encoding="utf-8")
+    active_batch = ShutdownCoordinator()
+    active_batch.acquire_batch_lock(settings.output_dir)
+    try:
+        with pytest.raises(RuntimeError, match="Another batch is already running"):
+            runner.run_batch([recording], **options)
+        assert extraction.read_text(encoding="utf-8") == "original"
+    finally:
+        active_batch.release_batch_lock()
+
+
+def test_batch_releases_lock_when_preparation_fails(tmp_path: Path) -> None:
+    recording = tmp_path / "meeting.mp4"
+    runner, _, settings = _runner(tmp_path, recording)
+    with pytest.raises(FileNotFoundError, match="Meeting Recording not found"):
+        runner.run_batch([recording])
+
+    contender = ShutdownCoordinator()
+    contender.acquire_batch_lock(settings.output_dir)
+    contender.release_batch_lock()
 
 
 def test_run_writes_complete_extraction_bundle(tmp_path: Path) -> None:
